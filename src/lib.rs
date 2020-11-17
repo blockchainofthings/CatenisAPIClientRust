@@ -26,6 +26,9 @@ use flate2::{
         DeflateEncoder, DeflateDecoder
     }
 };
+use time::{
+    OffsetDateTime, Date, Duration
+};
 
 mod error;
 
@@ -37,6 +40,8 @@ const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
 const API_BASE_URL_PATH: &str = "api/:version/";
 const DEFAULT_API_VERSION: ApiVersion = ApiVersion(0, 10);
+const SIGNATURE_VALIDITY_DAYS: u8 = 7;
+const TIME_VARIATION_SECS: u8 = 5;
 
 type KVList<'a> = &'a [(&'a str, &'a str)];
 
@@ -70,6 +75,8 @@ pub struct CatenisClient<'a> {
     base_api_url: Url,
     use_compression: bool,
     compress_threshold: usize,
+    sign_date: Option<Date>,
+    signing_key: Option<[u8; 32]>,
     http_client: blk_reqwest::Client,
 }
 
@@ -89,6 +96,8 @@ impl<'a> CatenisClient<'a> {
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             use_compression,
             compress_threshold,
+            sign_date: None,
+            signing_key: None,
             http_client: Self::get_http_client(use_compression)?,
         })
     }
@@ -157,6 +166,8 @@ impl<'a> CatenisClient<'a> {
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             use_compression,
             compress_threshold,
+            sign_date: None,
+            signing_key: None,
             http_client: CatenisClient::get_http_client(use_compression)?,
         })
     }
@@ -225,6 +236,124 @@ impl<'a> CatenisClient<'a> {
 
         req_builder.build()
             .map_err(Into::into)
+    }
+
+    fn sign_request(&mut self, req: &mut blk_reqwest::Request, api_access_secret: &str, device_id: &str) -> Result<()> {
+        let mut new_headers = HeaderMap::new();
+        let now;
+        let timestamp;
+
+        // Identify new headers that need to be added to HTTP request
+        {
+            let headers = req.headers();
+
+            if !headers.contains_key(HOST) {
+                // Prepare to add missing 'host' header to HTTP request
+                if let Some(host) = Self::get_host_with_port(req.url()) {
+                    new_headers.insert(HOST, host.parse()?);
+                } else {
+                    return Err(Error::new_client_error(Some("Inconsistent HTTP request: URL missing host"), None::<error::GenericError>));
+                }
+            }
+
+            // Prepare to add custom 'x-bcot-timestamp' header to HTTP request
+            now = OffsetDateTime::now_utc();
+            timestamp = now.format("%Y%m%dT%H%M%SZ");
+            new_headers.insert(X_BCOT_TIMESTAMP, timestamp.parse()?);
+        }
+
+        // Add headers to HTTP request
+        {
+            for (key, value) in new_headers.iter() {
+                let val = value.clone();
+
+                req.headers_mut().insert(key, val);
+            }
+        }
+
+        // Prepare to sign HTTP request
+
+        // 1. Assemble conformed request
+
+        // 1.1. Add HTTP verb
+        let mut conformed_request: String = req.method().to_string() + "\n";
+
+        // 1.2. Add URL path
+        conformed_request = conformed_request + &Self::get_url_path_with_query(req.url()) + "\n";
+
+        // 1.3. Assemble and add essential headers
+        {
+            let essential_headers_list = [
+                HOST,
+                HeaderName::from_static(X_BCOT_TIMESTAMP)
+            ];
+            let mut essential_headers = String::from("");
+            let headers = req.headers();
+
+            for header_name in essential_headers_list.iter() {
+                essential_headers = essential_headers + header_name.as_str() + ":" + headers.get(header_name).unwrap().to_str()? + "\n";
+            }
+
+            conformed_request = conformed_request + &essential_headers + "\n";
+        }
+
+        // 1.4. Hash HTTP request payload and add it
+        let payload = if let Some(body) = req.body_mut() {
+            body.buffer()?
+        } else {
+            b""
+        };
+
+        conformed_request = conformed_request + &sha256::Hash::hash(payload).to_hex() + "\n";
+
+        // 2. Update sign date and signing key
+        self.update_sign_date_and_key(&now, api_access_secret, device_id);
+
+        // 3. Assemble string to sign
+        let scope = self.sign_date.unwrap().format("%Y%m%d") + "/ctn1_request";
+        let string_to_sign = String::from("CTN1-HMAC-SHA256\n") + &timestamp + "\n"
+            + &scope + "\n"
+            + &sha256::Hash::hash(conformed_request.as_bytes()).to_hex() + "\n";
+
+        // 4. Generate signature
+        let mut hmac_engine = HmacEngine::<sha256::Hash>::new(&self.signing_key.unwrap());
+        hmac_engine.input(string_to_sign.as_bytes());
+        let signature = Hmac::<sha256::Hash>::from_engine(hmac_engine).to_hex();
+
+        // Add 'authorization' header to HTTP request
+        let value = String::from("CTN1-HMAC-SHA256 Credential=") + device_id + "/"
+            + &scope + ",Signature=" + &signature;
+
+        req.headers_mut().insert(AUTHORIZATION, value.parse()?);
+
+        Ok(())
+    }
+
+    fn update_sign_date_and_key(&mut self, now: &OffsetDateTime, api_access_secret: &str, device_id: &str) {
+        let lower_bound_sign_date = (now.clone() - Duration::seconds(TIME_VARIATION_SECS as i64)).date() - Duration::days(SIGNATURE_VALIDITY_DAYS as i64);
+
+        let need_to_update = if let None = self.sign_date {
+            true
+        } else if self.sign_date.unwrap() < lower_bound_sign_date {
+            true
+        } else {
+            false
+        };
+
+        if need_to_update {
+            self.sign_date = Some(now.date());
+
+            // Generate new signing key
+            let inner_key = String::from("CTN1") + api_access_secret;
+            let mut hmac_engine = HmacEngine::<sha256::Hash>::new(inner_key.as_bytes());
+            hmac_engine.input(self.sign_date.unwrap().format("%Y%m%d").as_bytes());
+            let date_key = &Hmac::<sha256::Hash>::from_engine(hmac_engine)[..];
+
+            let mut hmac_engine = HmacEngine::<sha256::Hash>::new(date_key);
+            hmac_engine.input(b"ctn1_request");
+
+            self.signing_key = Some(*Hmac::<sha256::Hash>::from_engine(hmac_engine).as_inner());
+        }
     }
 
     // Definition of private associated ("static") functions
@@ -327,105 +456,6 @@ impl<'a> CatenisClient<'a> {
         path
     }
 
-    fn sign_request(req: &mut blk_reqwest::Request, api_access_secret: &str, device_id: &str) -> Result<()> {
-        let mut new_headers = HeaderMap::new();
-        let now;
-        let timestamp;
-
-        // Identify new headers that need to be added to HTTP request
-        {
-            let headers = req.headers();
-
-            if !headers.contains_key(HOST) {
-                // Prepare to add missing 'host' header to HTTP request
-                if let Some(host) = Self::get_host_with_port(req.url()) {
-                    new_headers.insert(HOST, host.parse()?);
-                } else {
-                    return Err(Error::new_client_error(Some("Inconsistent HTTP request: URL missing host"), None::<error::GenericError>));
-                }
-            }
-
-            // Prepare to add custom 'x-bcot-timestamp' header to HTTP request
-            now = time::OffsetDateTime::now_utc();
-            timestamp = now.format("%Y%m%dT%H%M%SZ");
-            new_headers.insert(X_BCOT_TIMESTAMP, timestamp.parse()?);
-        }
-
-        // Add headers to HTTP request
-        {
-            for (key, value) in new_headers.iter() {
-                let val = value.clone();
-
-                req.headers_mut().insert(key, val);
-            }
-        }
-
-        // Prepare to sign HTTP request
-
-        // 1. Assemble conformed request
-
-        // 1.1. Add HTTP verb
-        let mut conformed_request: String = req.method().to_string() + "\n";
-
-        // 1.2. Add URL path
-        conformed_request = conformed_request + &Self::get_url_path_with_query(req.url()) + "\n";
-
-        // 1.3. Assemble and add essential headers
-        {
-            let essential_headers_list = [
-                HOST,
-                HeaderName::from_static(X_BCOT_TIMESTAMP)
-            ];
-            let mut essential_headers = String::from("");
-            let headers = req.headers();
-
-            for header_name in essential_headers_list.iter() {
-                essential_headers = essential_headers + header_name.as_str() + ":" + headers.get(header_name).unwrap().to_str()? + "\n";
-            }
-
-            conformed_request = conformed_request + &essential_headers + "\n";
-        }
-
-        // 1.4. Hash HTTP request payload and add it
-        let payload = if let Some(body) = req.body_mut() {
-            body.buffer()?
-        } else {
-            b""
-        };
-
-        conformed_request = conformed_request + &sha256::Hash::hash(payload).to_hex() + "\n";
-
-        // 2. Assemble string to sign
-        let date = now.format("%Y%m%d");
-        let scope = String::from(&date) + "/ctn1_request";
-        let string_to_sign = String::from("CTN1-HMAC-SHA256\n") + &timestamp + "\n"
-            + &scope + "\n"
-            + &sha256::Hash::hash(conformed_request.as_bytes()).to_hex() + "\n";
-
-        // 3. Generate signing key
-        let inner_key = String::from("CTN1") + api_access_secret;
-        let mut hmac_engine = HmacEngine::<sha256::Hash>::new(inner_key.as_bytes());
-        hmac_engine.input(date.as_bytes());
-        let date_key = &Hmac::<sha256::Hash>::from_engine(hmac_engine)[..];
-
-        let mut hmac_engine = HmacEngine::<sha256::Hash>::new(date_key);
-        hmac_engine.input(b"ctn1_request");
-        let signing_key = &Hmac::<sha256::Hash>::from_engine(hmac_engine)[..];
-
-        // 4. Generate signature
-        let mut hmac_engine = HmacEngine::<sha256::Hash>::new(signing_key);
-        hmac_engine.input(string_to_sign.as_bytes());
-        let signature = Hmac::<sha256::Hash>::from_engine(hmac_engine).to_hex();
-
-        // Add 'authorization' header to HTTP request
-        let value = String::from("CTN1-HMAC-SHA256 Credential=") + device_id + "/"
-            + &scope + ",Signature=" + &signature;
-
-        req.headers_mut().insert(AUTHORIZATION, value.parse()?);
-
-        Ok(())
-    }
-
     fn compress_body(body: String) -> Vec<u8> {
         let mut enc = DeflateEncoder::new(body.as_bytes(), Compression::default());
         let mut enc_body = Vec::new();
@@ -478,27 +508,6 @@ mod tests {
     }
 
     #[test]
-    fn it_requests_url() {
-        let req_client = reqwest::blocking::Client::new();
-        let mut req = req_client.get("http://localhost:3000/api/0.10/messages")
-            .build()
-            .unwrap();
-
-        CatenisClient::sign_request(&mut req, "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3", "drc3XdxNtzoucpw9xiRp");
-
-        println!("Request: {:?}", &req);
-
-        let res = req_client.execute(req).unwrap();
-
-        println!("Response: {:?}", &res);
-
-        if res.status().is_success() {
-            let ctn_resp: serde_json::Value = res.json().unwrap();
-            println!("Catenis response: {:?}", ctn_resp);
-        }
-    }
-
-    #[test]
     fn it_does_hashes() {
         let hash: sha256::Hash = hex::FromHex::from_hex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap();
         let hash2 = sha256::Hash::from_hex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap();
@@ -516,7 +525,7 @@ mod tests {
     fn it_formats_date_time() {
         use time;
 
-        let str_time = time::OffsetDateTime::now_utc().format("%FT%TZ");
+        let str_time = OffsetDateTime::now_utc().format("%FT%TZ");
 
         println!("Formatted date & time: {}", str_time);
     }
@@ -588,7 +597,7 @@ mod tests {
 
         println!(">>>>>> Instantiated Catenis API client: {:?}", ctn_client);
 
-        let ctn_client = CatenisClient::new_with_options(
+        let mut ctn_client = CatenisClient::new_with_options(
             api_access_secret,
             device_id,
             &[
@@ -611,7 +620,7 @@ mod tests {
 
         println!(">>>>>> API GET method request: {:?}", req);
 
-        CatenisClient::sign_request(&mut req, ctn_client.api_access_secret, ctn_client.device_id);
+        ctn_client.sign_request(&mut req, ctn_client.api_access_secret, ctn_client.device_id);
 
         println!(">>>>>> API GET method request (SIGNED): {:?}", req);
 
@@ -652,7 +661,7 @@ mod tests {
 
         println!(">>>>>> Instantiated Catenis API client: {:?}", ctn_client);
 
-        let ctn_client = CatenisClient::new_with_options(
+        let mut ctn_client = CatenisClient::new_with_options(
             api_access_secret,
             device_id,
             &[
@@ -679,7 +688,7 @@ mod tests {
         println!(">>>>>> API POST method request: {:?}", req);
         println!(">>>>>> API POST method request body: {:?}", req.body());
 
-        CatenisClient::sign_request(&mut req, ctn_client.api_access_secret, ctn_client.device_id);
+        ctn_client.sign_request(&mut req, ctn_client.api_access_secret, ctn_client.device_id);
 
         println!(">>>>>> API POST method request (SIGNED): {:?}", req);
 
