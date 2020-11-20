@@ -4,7 +4,7 @@ use std::{
     fmt::{
         Display, Formatter,
     },
-    io::Read
+    io::Read,
 };
 use bitcoin_hashes::{
     Hash, HashEngine, hex::ToHex, Hmac,
@@ -19,22 +19,24 @@ use reqwest::{
     },
     Url,
 };
-use url::ParseError;
 use flate2::{
     Compression,
     bufread::{
-        DeflateEncoder, DeflateDecoder
+        DeflateEncoder,
     }
 };
 use time::{
-    OffsetDateTime, Date, Duration
+    OffsetDateTime, Date, Duration,
 };
+use serde::de::DeserializeOwned;
 
 mod error;
+mod data_structure;
 
 pub use error::{
     Error, Result
 };
+pub use data_structure::*;
 
 const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
@@ -98,7 +100,7 @@ impl<'a> CatenisClient<'a> {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: Self::get_http_client(use_compression)?,
+            http_client: Self::new_http_client(use_compression)?,
         })
     }
 
@@ -134,7 +136,9 @@ impl<'a> CatenisClient<'a> {
                     if let Environment::Sandbox = env {
                         if let Some(host) = base_url.host_str() {
                             // Add proper subdomain to host
-                            base_url.set_host(Some(&(String::from("sandbox.") + host)))?;
+                            let orig_host = String::from(host);
+
+                            base_url.set_host(Some(&(String::from("sandbox.") + &orig_host)))?;
                         } else {
                             return Err(Error::new_client_error(Some("Inconsistent URL: missing host"), None::<error::GenericError>));
                         }
@@ -168,11 +172,47 @@ impl<'a> CatenisClient<'a> {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: CatenisClient::get_http_client(use_compression)?,
+            http_client: Self::new_http_client(use_compression)?,
         })
     }
 
+    pub fn log_message(&mut self, message: &str, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
+        let body = LogMessageRequest {
+            message: String::from(message),
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request("messages/log", body_json, None::<KVList>, None::<KVList>)?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
+    }
+
     // Definition of private methods
+
+    fn send_request(&mut self, req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
+        self.check_sign_and_send_request(req, false)
+    }
+
+    fn sign_and_send_request(&mut self, req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
+        self.check_sign_and_send_request(req, true)
+    }
+
+    fn check_sign_and_send_request(&mut self, mut req: blk_reqwest::Request, sign_request: bool) -> Result<blk_reqwest::Response> {
+        if sign_request {
+            self.sign_request(&mut req)?;
+        }
+
+        let res = self.http_client.execute(req)
+            .map_err::<Error, _>(Into::into)?;
+
+        if res.status().is_success() {
+            Ok(res)
+        } else {
+            Err(Error::from_http_response(res))
+        }
+    }
 
     fn get_request<I, J, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<J>) -> Result<blk_reqwest::Request>
         where
@@ -222,7 +262,7 @@ impl<'a> CatenisClient<'a> {
 
             if self.use_compression && body.len() >= self.compress_threshold {
                 // Add compressed body
-                req_builder = req_builder.body(Self::compress_body(body))
+                req_builder = req_builder.body(Self::compress_body(body)?)
                     .header(CONTENT_ENCODING, HeaderValue::from_static("deflate"));
             } else {
                 // Add plain body
@@ -238,7 +278,7 @@ impl<'a> CatenisClient<'a> {
             .map_err(Into::into)
     }
 
-    fn sign_request(&mut self, req: &mut blk_reqwest::Request, api_access_secret: &str, device_id: &str) -> Result<()> {
+    fn sign_request(&mut self, req: &mut blk_reqwest::Request) -> Result<()> {
         let mut new_headers = HeaderMap::new();
         let now;
         let timestamp;
@@ -307,7 +347,7 @@ impl<'a> CatenisClient<'a> {
         conformed_request = conformed_request + &sha256::Hash::hash(payload).to_hex() + "\n";
 
         // 2. Update sign date and signing key
-        self.update_sign_date_and_key(&now, api_access_secret, device_id);
+        self.update_sign_date_and_key(&now);
 
         // 3. Assemble string to sign
         let scope = self.sign_date.unwrap().format("%Y%m%d") + "/ctn1_request";
@@ -321,7 +361,7 @@ impl<'a> CatenisClient<'a> {
         let signature = Hmac::<sha256::Hash>::from_engine(hmac_engine).to_hex();
 
         // Add 'authorization' header to HTTP request
-        let value = String::from("CTN1-HMAC-SHA256 Credential=") + device_id + "/"
+        let value = String::from("CTN1-HMAC-SHA256 Credential=") + self.device_id + "/"
             + &scope + ",Signature=" + &signature;
 
         req.headers_mut().insert(AUTHORIZATION, value.parse()?);
@@ -329,7 +369,7 @@ impl<'a> CatenisClient<'a> {
         Ok(())
     }
 
-    fn update_sign_date_and_key(&mut self, now: &OffsetDateTime, api_access_secret: &str, device_id: &str) {
+    fn update_sign_date_and_key(&mut self, now: &OffsetDateTime) {
         let lower_bound_sign_date = (now.clone() - Duration::seconds(TIME_VARIATION_SECS as i64)).date() - Duration::days(SIGNATURE_VALIDITY_DAYS as i64);
 
         let need_to_update = if let None = self.sign_date {
@@ -344,7 +384,7 @@ impl<'a> CatenisClient<'a> {
             self.sign_date = Some(now.date());
 
             // Generate new signing key
-            let inner_key = String::from("CTN1") + api_access_secret;
+            let inner_key = String::from("CTN1") + self.api_access_secret;
             let mut hmac_engine = HmacEngine::<sha256::Hash>::new(inner_key.as_bytes());
             hmac_engine.input(self.sign_date.unwrap().format("%Y%m%d").as_bytes());
             let date_key = &Hmac::<sha256::Hash>::from_engine(hmac_engine)[..];
@@ -358,7 +398,15 @@ impl<'a> CatenisClient<'a> {
 
     // Definition of private associated ("static") functions
 
-    fn get_http_client(use_compression: bool) -> reqwest::Result<blk_reqwest::Client> {
+    fn parse_response<T: DeserializeOwned>(res: blk_reqwest::Response) -> Result<T> {
+        let body = res.text()
+            .map_err::<Error, _>(|e| Error::new_client_error(Some("Inconsistent Catenis API response"), Some(e)))?;
+
+        serde_json::from_str(&body)
+            .map_err::<Error, _>(|e| Error::new_client_error(Some("Inconsistent Catenis API response"), Some(e)))
+    }
+
+    fn new_http_client(use_compression: bool) -> reqwest::Result<blk_reqwest::Client> {
         let mut client_builder = blk_reqwest::ClientBuilder::new();
 
         // Prepare to add default HTTP headers
@@ -456,12 +504,12 @@ impl<'a> CatenisClient<'a> {
         path
     }
 
-    fn compress_body(body: String) -> Vec<u8> {
+    fn compress_body(body: String) -> Result<Vec<u8>> {
         let mut enc = DeflateEncoder::new(body.as_bytes(), Compression::default());
         let mut enc_body = Vec::new();
-        enc.read_to_end(&mut enc_body);
+        enc.read_to_end(&mut enc_body)?;
 
-        enc_body
+        Ok(enc_body)
     }
 }
 
@@ -500,13 +548,6 @@ mod tests {
         println!("Resulting customer object: {:?}", cust);
     }
 
-    async fn do_request() {
-        let resp = reqwest::get("https://httpbin.org/ip")
-            .await.expect("Error calling request");
-
-        println!("Returned request response: {:?}", resp);
-    }
-
     #[test]
     fn it_does_hashes() {
         let hash: sha256::Hash = hex::FromHex::from_hex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap();
@@ -523,8 +564,6 @@ mod tests {
 
     #[test]
     fn it_formats_date_time() {
-        use time;
-
         let str_time = OffsetDateTime::now_utc().format("%FT%TZ");
 
         println!("Formatted date & time: {}", str_time);
@@ -572,17 +611,19 @@ mod tests {
 
     #[test]
     fn it_compress_data() {
+        use flate2::bufread::DeflateDecoder;
+
         let str_2_decode = String::from("This is only a test");
         println!("String to compress: {}", str_2_decode);
 
         let mut enc = DeflateEncoder::new(str_2_decode.as_bytes(), Compression::default());
         let mut enc_data = Vec::new();
-        enc.read_to_end(&mut enc_data);
+        enc.read_to_end(&mut enc_data).unwrap();
         println!("Compressed data: {:?}", enc_data);
 
         let mut dec = DeflateDecoder::new(enc_data.as_slice());
         let mut orig_str = String::new();
-        dec.read_to_string(&mut orig_str);
+        dec.read_to_string(&mut orig_str).unwrap();
         println!("Decompressed data: {}", orig_str);
 
         assert_eq!(str_2_decode, orig_str);
@@ -620,7 +661,7 @@ mod tests {
 
         println!(">>>>>> API GET method request: {:?}", req);
 
-        ctn_client.sign_request(&mut req, ctn_client.api_access_secret, ctn_client.device_id);
+        ctn_client.sign_request(&mut req).unwrap();
 
         println!(">>>>>> API GET method request (SIGNED): {:?}", req);
 
@@ -673,10 +714,10 @@ mod tests {
 
         println!(">>>>>> Instantiated Catenis API client (CUSTOM): {:?}", ctn_client);
 
-        let permRights = SetPermRights {
+        let perm_rights = SetPermRights {
             system: Some(String::from("allow"))
         };
-        let body = json!(permRights).to_string();
+        let body = json!(perm_rights).to_string();
 
         let mut req = ctn_client.post_request(
             "permission/events/:eventName/rights",
@@ -688,7 +729,7 @@ mod tests {
         println!(">>>>>> API POST method request: {:?}", req);
         println!(">>>>>> API POST method request body: {:?}", req.body());
 
-        ctn_client.sign_request(&mut req, ctn_client.api_access_secret, ctn_client.device_id);
+        ctn_client.sign_request(&mut req).unwrap();
 
         println!(">>>>>> API POST method request (SIGNED): {:?}", req);
 
@@ -713,5 +754,28 @@ mod tests {
                 println!(">>>>>> API POST method response body: {}", body);
             }
         }
+    }
+
+    #[test]
+    fn it_call_log_message_api_method() {
+        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
+        let device_id = "drc3XdxNtzoucpw9xiRp";
+
+        let mut ctn_client = CatenisClient::new_with_options(
+            api_access_secret,
+            device_id,
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+                ClientOptions::UseCompression(false)
+            ],
+        ).unwrap();
+
+        println!(">>>>>> Instantiated Catenis API client (CUSTOM): {:?}", ctn_client);
+
+        let result = ctn_client.log_message("Test message #2 (2020-11-20)", None);
+
+        println!(">>>>>> Log Message result: {:?}", result);
+
     }
 }

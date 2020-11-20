@@ -1,9 +1,5 @@
 use reqwest::{
     blocking as blk_reqwest,
-    header::{
-        CONTENT_TYPE, HeaderMap, HeaderName,
-        HeaderValue,
-    },
     StatusCode,
 };
 use serde::Deserialize;
@@ -111,10 +107,10 @@ impl Error {
         }
     }
 
-    pub(crate) fn from_blk_http_response(res: blk_reqwest::Response) -> Self {
+    pub(crate) fn from_http_response(res: blk_reqwest::Response) -> Self {
         let http_status_code = res.status();
 
-        if !http_status_code.is_success() {
+        if http_status_code.is_success() {
             return Self::new_client_error(Some("Trying to process successful http response as an error"), None::<GenericError>);
         }
 
@@ -203,6 +199,7 @@ impl ConvertibleError for reqwest::Error {}
 impl ConvertibleError for reqwest::header::InvalidHeaderValue {}
 impl ConvertibleError for reqwest::header::ToStrError {}
 impl ConvertibleError for url::ParseError {}
+impl ConvertibleError for serde_json::Error {}
 
 impl<E> From<E> for Error
     where
@@ -237,5 +234,10 @@ mod tests {
         let result = local_proc();
 
         println!("Local processing result: {}", result.err().unwrap());
+    }
+
+    #[test]
+    fn it_generate_api_error() {
+        Error::new_api_error(StatusCode::BAD_REQUEST, Some("Sample text message"), Some("Sample Catenis error message"));
     }
 }
