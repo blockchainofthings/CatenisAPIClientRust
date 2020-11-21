@@ -32,6 +32,8 @@ use serde::de::DeserializeOwned;
 
 mod error;
 mod data_structure;
+#[cfg(feature = "async")]
+mod async_impl;
 
 pub use error::{
     Error, Result
@@ -79,7 +81,8 @@ pub struct CatenisClient<'a> {
     compress_threshold: usize,
     sign_date: Option<Date>,
     signing_key: Option<[u8; 32]>,
-    http_client: blk_reqwest::Client,
+    http_client: Option<blk_reqwest::Client>,
+    http_client_async: Option<reqwest::Client>,
 }
 
 impl<'a> CatenisClient<'a> {
@@ -100,7 +103,8 @@ impl<'a> CatenisClient<'a> {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: Self::new_http_client(use_compression)?,
+            http_client: Some(Self::new_http_client(use_compression)?),
+            http_client_async: None,
         })
     }
 
@@ -172,7 +176,8 @@ impl<'a> CatenisClient<'a> {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: Self::new_http_client(use_compression)?,
+            http_client: Some(Self::new_http_client(use_compression)?),
+            http_client_async: None,
         })
     }
 
@@ -204,7 +209,9 @@ impl<'a> CatenisClient<'a> {
             self.sign_request(&mut req)?;
         }
 
-        let res = self.http_client.execute(req)
+        let res = self.http_client.as_ref()
+            .expect("Trying to access uninitialized HTTP client")
+            .execute(req)
             .map_err::<Error, _>(Into::into)?;
 
         if res.status().is_success() {
@@ -229,7 +236,9 @@ impl<'a> CatenisClient<'a> {
             endpoint_url_path = Self::merge_url_params(&endpoint_url_path, params);
         }
 
-        let mut req_builder = self.http_client.get(self.base_api_url.join(&endpoint_url_path)?);
+        let mut req_builder = self.http_client.as_ref()
+            .expect("Trying to access uninitialized HTTP client")
+            .get(self.base_api_url.join(&endpoint_url_path)?);
 
         if let Some(params) = query_params {
             req_builder = req_builder.query(&Self::assemble_query_params(params));
@@ -254,7 +263,9 @@ impl<'a> CatenisClient<'a> {
             endpoint_url_path = Self::merge_url_params(&endpoint_url_path, params);
         }
 
-        let mut req_builder = self.http_client.post(self.base_api_url.join(&endpoint_url_path)?);
+        let mut req_builder = self.http_client.as_ref()
+            .expect("Trying to access uninitialized HTTP client")
+            .post(self.base_api_url.join(&endpoint_url_path)?);
 
         if body.len() > 0 {
             // Prepare to add body to request
@@ -339,7 +350,7 @@ impl<'a> CatenisClient<'a> {
 
         // 1.4. Hash HTTP request payload and add it
         let payload = if let Some(body) = req.body_mut() {
-            body.buffer()?
+            body.as_bytes().expect("Unable to access request body; body not buffered")
         } else {
             b""
         };
@@ -665,7 +676,9 @@ mod tests {
 
         println!(">>>>>> API GET method request (SIGNED): {:?}", req);
 
-        let res_result = ctn_client.http_client.execute(req);
+        let res_result = ctn_client.http_client
+            .expect("Trying to access uninitialized HTTP client")
+            .execute(req);
 
         println!(">>>>>> API GET method response: {:?}", res_result);
 
@@ -733,7 +746,9 @@ mod tests {
 
         println!(">>>>>> API POST method request (SIGNED): {:?}", req);
 
-        let res_result = ctn_client.http_client.execute(req);
+        let res_result = ctn_client.http_client
+            .expect("Trying to access uninitialized HTTP client")
+            .execute(req);
 
         println!(">>>>>> API POST method response: {:?}", res_result);
 

@@ -10,8 +10,8 @@ use std::{
 
 #[derive(Debug, Deserialize)]
 pub struct CatenisErrorResponse {
-    status: String,
-    message: String,
+    pub status: String,
+    pub message: String,
 }
 
 pub type Result<T> = result::Result<T, Error>;
