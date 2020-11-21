@@ -11,15 +11,15 @@ edition = "2018"
 async = ["async-compression", "tokio/io-util"]
 
 [dependencies]
-serde = { version = "1.0.117", features = ["derive"] }
-serde_json = "1.0.59"
-reqwest = { version = "0.10.8", features = ["blocking", "json", "gzip"] }
-url = "2.2.0"
-tokio-tungstenite = "0.11.0"
-bitcoin_hashes = "0.9.4"
-time = { version = "0.2.22", features = ["serde"] }
-flate2 = "1.0.19"
-async-compression = { version = "0.3.6", default-features = false, features = ["tokio-02", "deflate"], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.10", features = ["blocking", "json", "gzip"] }
+url = "2.2"
+tokio-tungstenite = "0.11"
+bitcoin_hashes = "0.9"
+time = { version = "0.2", features = ["serde"] }
+flate2 = "1.0"
+async-compression = { version = "0.3", default-features = false, features = ["tokio-02", "deflate"], optional = true }
 tokio = { version = "0.2", default-features = false, features = ["io-util"], optional = true }
 
 [dev-dependencies]
