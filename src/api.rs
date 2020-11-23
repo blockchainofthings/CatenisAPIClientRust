@@ -227,7 +227,7 @@ pub struct MessageProcessProgress {
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessSuccess {
     pub message_id: String,
-    pub continuation_token: String,
+    pub continuation_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

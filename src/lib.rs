@@ -31,14 +31,14 @@ use time::{
 use serde::de::DeserializeOwned;
 
 mod error;
-mod data_structure;
+mod api;
 #[cfg(feature = "async")]
 mod async_impl;
 
 pub use error::{
     Error, Result
 };
-pub use data_structure::*;
+pub use api::*;
 
 const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
