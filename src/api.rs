@@ -1,12 +1,20 @@
-use std::collections::hash_map::HashMap;
+use std::{
+    fmt,
+    collections::hash_map::HashMap,
+    cmp::{
+        PartialEq,
+        Eq,
+    },
+    hash::Hash
+};
 use serde::{
-    Deserialize, Serialize
+    Deserialize, Serialize, Deserializer, de::{self, Visitor},
 };
 pub use time::OffsetDateTime;
 
-pub type ListPermissionEventsResult = HashMap<String, String>;
+pub type ListPermissionEventsResult = HashMap<PermissionEvent, String>;
 pub type CheckEffectivePermissionRightResult = HashMap<String, PermissionRight>;
-pub type ListNotificationEventsResult = HashMap<String, String>;
+pub type ListNotificationEventsResult = HashMap<NotificationEvent, String>;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -351,6 +359,90 @@ pub struct AssetHolderEntry {
     pub balance: AssetBalance,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum PermissionEvent {
+    ReceiveNotifyNewMsg,
+    ReceiveNotifyMsgRead,
+    ReceiveNotifyAssetOf,
+    ReceiveNotifyAssetFrom,
+    ReceiveNotifyConfirmAssetOf,
+    ReceiveNotifyConfirmAssetFrom,
+    SendReadMsgConfirm,
+    ReceiveMsg,
+    DiscloseMainProps,
+    DiscloseIdentityInfo,
+    ReceiveAssetOf,
+    ReceiveAssetFrom,
+    UnknownEvent(String),
+}
+
+impl<'de> Deserialize<'de> for PermissionEvent {
+    fn deserialize<D>(deserializer: D) -> Result<PermissionEvent, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        struct PermissionEventVisitor;
+
+        impl<'de> Visitor<'de> for PermissionEventVisitor {
+            type Value = PermissionEvent;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<PermissionEvent, E>
+                where
+                    E: de::Error,
+            {
+                let event: PermissionEvent = value.into();
+                Ok(event)
+            }
+        }
+
+        deserializer.deserialize_string(PermissionEventVisitor)
+    }
+}
+
+impl ToString for PermissionEvent {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            PermissionEvent::ReceiveNotifyNewMsg => "receive-notify-new-msg",
+            PermissionEvent::ReceiveNotifyMsgRead => "receive-notify-msg-read",
+            PermissionEvent::ReceiveNotifyAssetOf => "receive-notify-asset-of",
+            PermissionEvent::ReceiveNotifyAssetFrom => "receive-notify-asset-from",
+            PermissionEvent::ReceiveNotifyConfirmAssetOf => "receive-notify-confirm-asset-of",
+            PermissionEvent::ReceiveNotifyConfirmAssetFrom => "receive-notify-confirm-asset-from",
+            PermissionEvent::SendReadMsgConfirm => "send-read-msg-confirm",
+            PermissionEvent::ReceiveMsg => "receive-msg",
+            PermissionEvent::DiscloseMainProps => "disclose-main-props",
+            PermissionEvent::DiscloseIdentityInfo => "disclose-identity-info",
+            PermissionEvent::ReceiveAssetOf => "receive-asset-of",
+            PermissionEvent::ReceiveAssetFrom => "receive-asset-from",
+            PermissionEvent::UnknownEvent(s) => s.as_str()
+        })
+    }
+}
+
+impl Into<PermissionEvent> for &str {
+    fn into(self) -> PermissionEvent {
+        match self {
+            "receive-notify-new-msg" => PermissionEvent::ReceiveNotifyNewMsg,
+            "receive-notify-msg-read" => PermissionEvent::ReceiveNotifyMsgRead,
+            "receive-notify-asset-of" => PermissionEvent::ReceiveNotifyAssetOf,
+            "receive-notify-asset-from" => PermissionEvent::ReceiveNotifyAssetFrom,
+            "receive-notify-confirm-asset-of" => PermissionEvent::ReceiveNotifyConfirmAssetOf,
+            "receive-notify-confirm-asset-from" => PermissionEvent::ReceiveNotifyConfirmAssetFrom,
+            "send-read-msg-confirm" => PermissionEvent::SendReadMsgConfirm,
+            "receive-msg" => PermissionEvent::ReceiveMsg,
+            "disclose-main-props" => PermissionEvent::DiscloseMainProps,
+            "disclose-identity-info" => PermissionEvent::DiscloseIdentityInfo,
+            "receive-asset-of" => PermissionEvent::ReceiveAssetOf,
+            "receive-asset-from" => PermissionEvent::ReceiveAssetFrom,
+            s @ _ => PermissionEvent::UnknownEvent(String::from(s)),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PermissionRight {
@@ -420,6 +512,69 @@ pub struct CatenisNodeInfo {
 pub struct ClientInfo {
     pub client_id: String,
     pub name: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum NotificationEvent {
+    NewMsgReceived,
+    SentMsgRead,
+    AssetReceived,
+    AssetConfirmed,
+    FinalMessageProgress,
+    InvalidEvent,
+}
+
+impl<'de> Deserialize<'de> for NotificationEvent {
+    fn deserialize<D>(deserializer: D) -> Result<NotificationEvent, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        struct NotificationEventVisitor;
+
+        impl<'de> Visitor<'de> for NotificationEventVisitor {
+            type Value = NotificationEvent;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<NotificationEvent, E>
+                where
+                    E: de::Error,
+            {
+                let event: NotificationEvent = value.into();
+                Ok(event)
+            }
+        }
+
+        deserializer.deserialize_string(NotificationEventVisitor)
+    }
+}
+
+impl ToString for NotificationEvent {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            NotificationEvent::NewMsgReceived => "new-msg-received",
+            NotificationEvent::SentMsgRead => "sent-msg-read",
+            NotificationEvent::AssetReceived => "asset-received",
+            NotificationEvent::AssetConfirmed => "asset-confirmed",
+            NotificationEvent::FinalMessageProgress => "final-msg-progress",
+            NotificationEvent::InvalidEvent => "invalid-event",
+        })
+    }
+}
+
+impl Into<NotificationEvent> for &str {
+    fn into(self) -> NotificationEvent {
+        match self {
+            "new-msg-received" => NotificationEvent::NewMsgReceived,
+            "sent-msg-read" => NotificationEvent::SentMsgRead,
+            "asset-received" => NotificationEvent::AssetReceived,
+            "asset-confirmed" => NotificationEvent::AssetConfirmed,
+            "final-msg-progress" => NotificationEvent::FinalMessageProgress,
+            _ => NotificationEvent::InvalidEvent,
+        }
+    }
 }
 
 // Result (used in response) data structures
@@ -826,5 +981,37 @@ mod tests {
         let device_info: DeviceInfo = serde_json::from_str(dev_info_json).unwrap();
 
         println!(">>>>>> Deserialized Device Info: {:?}", device_info);
+    }
+
+    #[test]
+    fn it_converts_notification_event() {
+        let event_str = NotificationEvent::SentMsgRead.to_string();
+        let event: NotificationEvent = event_str.as_str().into();
+        let event2: NotificationEvent = "new-msg-received".into();
+
+        println!(">>>>>> event_str: {}", event_str);
+        println!(">>>>>> event: {:?}", event);
+        println!(">>>>>> event2: {:?}", event2);
+    }
+
+    #[test]
+    fn it_deserialize_permission_event() {
+        let json = r#""anything""#;
+
+        let event: PermissionEvent = serde_json::from_str(json).unwrap();
+
+        println!(">>>>>> Deserialized permission event: {:?}", event);
+    }
+
+    #[test]
+    fn it_build_permission_map() {
+        let mut map = HashMap::<PermissionEvent, String>::new();
+
+        map.insert(PermissionEvent::ReceiveNotifyConfirmAssetOf, String::from("First value"));
+        map.insert(PermissionEvent::UnknownEvent(String::from("anything")), String::from("Second value"));
+        map.insert(PermissionEvent::UnknownEvent(String::from("something else")), String::from("Third value"));
+        map.insert(PermissionEvent::UnknownEvent(String::from("anything")), String::from("Forth value"));
+
+        println!(">>>>>> Built permission event map: {:?}", map);
     }
 }

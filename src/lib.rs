@@ -35,12 +35,14 @@ mod api;
 #[cfg(feature = "async")]
 mod async_impl;
 
+use error::GenericError;
+
 pub use error::{
-    Error, Result
+    Error, Result,
 };
 pub use api::*;
 
-const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
+pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
 const API_BASE_URL_PATH: &str = "api/:version/";
 const DEFAULT_API_VERSION: ApiVersion = ApiVersion(0, 10);
@@ -77,6 +79,7 @@ pub struct CatenisClient<'a> {
     api_access_secret: &'a str,
     device_id: &'a str,
     base_api_url: Url,
+    is_secure: bool,
     use_compression: bool,
     compress_threshold: usize,
     sign_date: Option<Date>,
@@ -92,6 +95,7 @@ impl<'a> CatenisClient<'a> {
     {
         let base_url = Url::parse(DEFAULT_BASE_URL)?;
         let api_version = DEFAULT_API_VERSION;
+        let is_secure = true;
         let use_compression = true;
         let compress_threshold: usize = 1024;
 
@@ -99,6 +103,7 @@ impl<'a> CatenisClient<'a> {
             api_access_secret,
             device_id,
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
+            is_secure,
             use_compression,
             compress_threshold,
             sign_date: None,
@@ -115,6 +120,7 @@ impl<'a> CatenisClient<'a> {
     {
         let mut base_url = Url::parse(DEFAULT_BASE_URL)?;
         let mut api_version = DEFAULT_API_VERSION;
+        let mut is_secure = true;
         let mut use_compression = true;
         let mut compress_threshold: usize = 1024;
 
@@ -132,7 +138,7 @@ impl<'a> CatenisClient<'a> {
                             }
                         },
                         (None, _) => {
-                            return Err(Error::new_client_error(Some("Invalid host"), None::<error::GenericError>));
+                            return Err(Error::new_client_error(Some("Invalid host"), None::<GenericError>));
                         }
                     }
                 }
@@ -144,15 +150,17 @@ impl<'a> CatenisClient<'a> {
 
                             base_url.set_host(Some(&(String::from("sandbox.") + &orig_host)))?;
                         } else {
-                            return Err(Error::new_client_error(Some("Inconsistent URL: missing host"), None::<error::GenericError>));
+                            return Err(Error::new_client_error(Some("Inconsistent URL: missing host"), None::<GenericError>));
                         }
                     }
                 }
                 ClientOptions::Secure(secure) => {
-                    if !*secure {
+                    is_secure = *secure;
+
+                    if !is_secure {
                         // Replace scheme
                         if let Err(_) = base_url.set_scheme("http") {
-                            return Err(Error::new_client_error(Some("Error resetting URL scheme"), None::<error::GenericError>));
+                            return Err(Error::new_client_error(Some("Error resetting URL scheme"), None::<GenericError>));
                         }
                     }
                 }
@@ -172,6 +180,7 @@ impl<'a> CatenisClient<'a> {
             api_access_secret,
             device_id,
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
+            is_secure,
             use_compression,
             compress_threshold,
             sign_date: None,
@@ -221,14 +230,16 @@ impl<'a> CatenisClient<'a> {
         }
     }
 
-    fn get_request<I, J, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<J>) -> Result<blk_reqwest::Request>
+    fn get_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<I2>) -> Result<blk_reqwest::Request>
         where
             I: IntoIterator,
-            J: IntoIterator,
             K: AsRef<str>,
             V: AsRef<str>,
             <I as IntoIterator>::Item: Borrow<(K, V)>,
-            <J as IntoIterator>::Item: Borrow<(K, V)>
+            I2: IntoIterator,
+            K2: AsRef<str>,
+            V2: AsRef<str>,
+            <I2 as IntoIterator>::Item: Borrow<(K2, V2)>,
     {
         let mut endpoint_url_path = String::from(endpoint_url_path);
 
@@ -248,14 +259,16 @@ impl<'a> CatenisClient<'a> {
             .map_err(Into::into)
     }
 
-    fn post_request<I, J, K, V>(&self, endpoint_url_path: &str, body: String, url_params: Option<I>, query_params: Option<J>) -> Result<blk_reqwest::Request>
+    fn post_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, body: String, url_params: Option<I>, query_params: Option<I2>) -> Result<blk_reqwest::Request>
         where
             I: IntoIterator,
-            J: IntoIterator,
             K: AsRef<str>,
             V: AsRef<str>,
             <I as IntoIterator>::Item: Borrow<(K, V)>,
-            <J as IntoIterator>::Item: Borrow<(K, V)>
+            I2: IntoIterator,
+            K2: AsRef<str>,
+            V2: AsRef<str>,
+            <I2 as IntoIterator>::Item: Borrow<(K2, V2)>,
     {
         let mut endpoint_url_path = String::from(endpoint_url_path);
 
@@ -303,7 +316,7 @@ impl<'a> CatenisClient<'a> {
                 if let Some(host) = Self::get_host_with_port(req.url()) {
                     new_headers.insert(HOST, host.parse()?);
                 } else {
-                    return Err(Error::new_client_error(Some("Inconsistent HTTP request: URL missing host"), None::<error::GenericError>));
+                    return Err(Error::new_client_error(Some("Inconsistent HTTP request: URL missing host"), None::<GenericError>));
                 }
             }
 
