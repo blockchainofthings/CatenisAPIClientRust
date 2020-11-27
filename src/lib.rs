@@ -31,6 +31,7 @@ use time::{
 use serde::de::DeserializeOwned;
 
 mod error;
+mod date_time;
 mod api;
 #[cfg(feature = "async")]
 mod async_impl;
@@ -40,6 +41,7 @@ use error::GenericError;
 pub use error::{
     Error, Result,
 };
+pub use date_time::UtcDateTime;
 pub use api::*;
 
 pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
@@ -588,7 +590,7 @@ mod tests {
 
     #[test]
     fn it_formats_date_time() {
-        let str_time = OffsetDateTime::now_utc().format("%FT%TZ");
+        let str_time = OffsetDateTime::now_utc().format("%Y%m%dT%H%M%SZ");
 
         println!("Formatted date & time: {}", str_time);
     }

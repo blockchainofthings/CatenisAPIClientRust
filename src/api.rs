@@ -10,7 +10,8 @@ use std::{
 use serde::{
     Deserialize, Serialize, Deserializer, de::{self, Visitor},
 };
-pub use time::OffsetDateTime;
+
+use crate::date_time::UtcDateTime;
 
 pub type ListPermissionEventsResult = HashMap<PermissionEvent, String>;
 pub type CheckEffectivePermissionRightResult = HashMap<String, PermissionRight>;
@@ -228,7 +229,7 @@ pub struct MessageProcessProgress {
     pub done: bool,
     pub success: Option<bool>,
     pub error: Option<MessageProcessError>,
-    pub finish_date: Option<OffsetDateTime>,
+    pub finish_date: Option<UtcDateTime>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -284,9 +285,9 @@ pub struct ListMessagesOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_state: Option<MessageReadStateOption>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_date: Option<OffsetDateTime>,
+    pub start_date: Option<UtcDateTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_date: Option<OffsetDateTime>,
+    pub end_date: Option<UtcDateTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -310,7 +311,7 @@ pub struct MessageEntry {
     pub to: Option<DeviceInfo>,
     pub read_confirmation_enabled: Option<bool>,
     pub read: Option<bool>,
-    pub date: OffsetDateTime,
+    pub date: UtcDateTime,
 }
 
 #[derive(Debug, Serialize)]
