@@ -33,6 +33,7 @@ use serde::de::DeserializeOwned;
 mod error;
 mod date_time;
 mod api;
+mod notification;
 #[cfg(feature = "async")]
 mod async_impl;
 
@@ -43,6 +44,7 @@ pub use error::{
 };
 pub use date_time::UtcDateTime;
 pub use api::*;
+pub use notification::*;
 
 const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
@@ -205,6 +207,10 @@ impl<'a> CatenisClient<'a> {
         Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
     }
 
+    pub fn new_ws_notify_channel(&'a mut self, notify_event: NotificationEvent) -> WsNotifyChannel {
+        WsNotifyChannel::new(self, notify_event)
+    }
+
     // Definition of private methods
 
     fn send_request(&mut self, req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
@@ -302,6 +308,23 @@ impl<'a> CatenisClient<'a> {
 
         req_builder.build()
             .map_err(Into::into)
+    }
+
+    fn get_ws_request<I, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>) -> Result<blk_reqwest::Request>
+        where
+            I: IntoIterator,
+            K: AsRef<str>,
+            V: AsRef<str>,
+            <I as IntoIterator>::Item: Borrow<(K, V)>,
+    {
+        let mut req = self.get_request(endpoint_url_path, url_params, None::<KVList>)?;
+
+        // Replace URL scheme as appropriate
+        if let Err(_) = req.url_mut().set_scheme(if self.is_secure {"wss"} else {"ws"}) {
+            return Err(Error::new_client_error(Some("Error resetting URL scheme"), None::<GenericError>));
+        }
+
+        Ok(req)
     }
 
     fn sign_request(&mut self, req: &mut blk_reqwest::Request) -> Result<()> {
@@ -806,6 +829,25 @@ mod tests {
         let result = ctn_client.log_message("Test message #2 (2020-11-20)", None);
 
         println!(">>>>>> Log Message result: {:?}", result);
+    }
 
+    #[test]
+    fn it_get_notify_channel() {
+        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
+        let device_id = "drc3XdxNtzoucpw9xiRp";
+
+        let mut ctn_client = CatenisClient::new_with_options(
+            api_access_secret,
+            device_id,
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+                ClientOptions::UseCompression(false)
+            ],
+        ).unwrap();
+
+        let notify_channel = ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived);
+
+        println!(">>>>>> WS Notify channel: {:?}", notify_channel);
     }
 }
