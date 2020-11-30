@@ -1,4 +1,6 @@
-use std::fmt;
+use std::{
+    result, fmt, time::Duration,
+};
 use time::{
     PrimitiveDateTime, OffsetDateTime, UtcOffset, Date,
 };
@@ -8,13 +10,41 @@ use serde::{
         self, Visitor
     }
 };
+use regex::Regex;
+
+use crate::error::{
+    Result,
+};
 
 const INVALID_DATE_TIME: OffsetDateTime = time::date!(0-01-01).midnight().assume_utc();
 
-#[inline]
-pub(crate) fn parse_z_offset_date_time(s: impl AsRef<str>, format: impl AsRef<str>) -> time::Result<OffsetDateTime> {
-    let format = String::from(format.as_ref()).replace("%Z", "Z");
-    Ok(PrimitiveDateTime::parse(s, format.as_str())?.assume_utc())
+// Assumed ISO date format: 'YYYY-MM-ddTHH:mm:ss[.SSS]Z'
+fn parse_iso_date(s: impl AsRef<str>) -> Result<OffsetDateTime> {
+    let s = s.as_ref();
+
+    // Extract fractional part of seconds if present
+    let mut millis = None;
+
+    let s = if let Some(mat) = Regex::new(r"\.\d+")?.find(s) {
+        millis = Some((mat.as_str().parse::<f64>()? * 1_000.0) as u64);
+
+        String::from(&s[0..mat.start()]) + &s[mat.end()..]
+    } else {
+        String::from(s)
+    };
+
+    let mut date = PrimitiveDateTime::parse(s, "%Y-%m-%dT%H:%M:%SZ")?;
+
+    if let Some(ms) = millis {
+        date = date + Duration::from_millis(ms);
+    }
+
+    Ok(date.assume_utc())
+}
+
+// Assumed ISO date format: 'YYYY-MM-ddTHH:mm:ss.SSSZ'
+fn format_iso_date(date: OffsetDateTime) -> String {
+    date.format("%Y-%m-%dT%H:%M:%S") + &format!(".{:0>3}Z", date.millisecond())
 }
 
 #[derive(Debug, PartialEq)]
@@ -64,13 +94,13 @@ impl Into<UtcDateTime> for Date {
 
 impl ToString for UtcDateTime {
     fn to_string(&self) -> String {
-        self.inner.format("%Y-%m-%dT%H:%M:%SZ")
+        format_iso_date(self.inner)
     }
 }
 
 impl Into<UtcDateTime> for &str {
     fn into(self) -> UtcDateTime {
-        let inner_date_time = if let Ok(date_time) = parse_z_offset_date_time(self, "%Y-%m-%dT%H:%M:%S%Z") {
+        let inner_date_time = if let Ok(date_time) = parse_iso_date(self) {
             date_time
         } else {
             INVALID_DATE_TIME
@@ -81,7 +111,7 @@ impl Into<UtcDateTime> for &str {
 }
 
 impl<'de> Deserialize<'de> for UtcDateTime {
-    fn deserialize<D>(deserializer: D) -> Result<UtcDateTime, D::Error>
+    fn deserialize<D>(deserializer: D) -> result::Result<UtcDateTime, D::Error>
         where
             D: Deserializer<'de>,
     {
@@ -94,7 +124,7 @@ impl<'de> Deserialize<'de> for UtcDateTime {
                 formatter.write_str("a string")
             }
 
-            fn visit_str<E>(self, value: &str) -> Result<UtcDateTime, E>
+            fn visit_str<E>(self, value: &str) -> result::Result<UtcDateTime, E>
                 where
                     E: de::Error,
             {
@@ -108,7 +138,7 @@ impl<'de> Deserialize<'de> for UtcDateTime {
 }
 
 impl Serialize for UtcDateTime {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> result::Result<S::Ok, S::Error>
         where
             S: Serializer,
     {
@@ -116,8 +146,31 @@ impl Serialize for UtcDateTime {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn it_parse_iso_dates() {
+        let offset_date_time = parse_iso_date("2020-11-30T09:27:25.123Z").unwrap();
+
+        assert_eq!(offset_date_time, time::date!(2020-11-30).with_time(time::time!(09:27:25.123)).assume_utc());
+
+        let date = parse_iso_date("2020-11-30T09:27:25Z").unwrap();
+
+        assert_eq!(date, time::date!(2020-11-30).with_time(time::time!(09:27:25)).assume_utc());
+    }
+
+    #[test]
+    fn it_format_iso_dates() {
+        let offset_date_time = time::date!(2020-11-30).with_time(time::time!(09:27:25.123)).assume_utc();
+
+        assert_eq!(format_iso_date(offset_date_time), "2020-11-30T09:27:25.123Z");
+
+        let offset_date_time = time::date!(2020-11-30).with_time(time::time!(09:27:25)).assume_utc();
+
+        assert_eq!(format_iso_date(offset_date_time), "2020-11-30T09:27:25.000Z");
+    }
 
     #[test]
     fn it_convert_from_offset_date_time() {
@@ -189,7 +242,7 @@ mod tests {
         };
         let dt_str = date_time.to_string();
 
-        assert_eq!(dt_str, "2020-11-27T07:53:25Z");
+        assert_eq!(dt_str, "2020-11-27T07:53:25.000Z");
     }
 
     #[test]
@@ -218,6 +271,6 @@ mod tests {
 
         let json_str = serde_json::to_string(&date_time).unwrap();
 
-        assert_eq!(json_str, r#""2020-11-27T07:53:25Z""#);
+        assert_eq!(json_str, r#""2020-11-27T07:53:25.000Z""#);
     }
 }

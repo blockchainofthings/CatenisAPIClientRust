@@ -200,6 +200,9 @@ impl ConvertibleError for reqwest::header::InvalidHeaderValue {}
 impl ConvertibleError for reqwest::header::ToStrError {}
 impl ConvertibleError for url::ParseError {}
 impl ConvertibleError for serde_json::Error {}
+impl ConvertibleError for regex::Error {}
+impl ConvertibleError for std::num::ParseFloatError {}
+impl ConvertibleError for time::ParseError {}
 
 impl<E> From<E> for Error
     where

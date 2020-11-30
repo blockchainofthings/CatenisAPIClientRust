@@ -21,6 +21,7 @@ time = { version = "0.2", features = ["serde"] }
 flate2 = "1.0"
 async-compression = { version = "0.3", default-features = false, features = ["tokio-02", "deflate"], optional = true }
 tokio = { version = "0.2", default-features = false, features = ["io-util"], optional = true }
+regex = "1"
 
 [dev-dependencies]
 tokio = { version = "0.2", default-features = false, features = ["macros"] }
