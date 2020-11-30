@@ -216,28 +216,119 @@ mod tests {
 
     use super::*;
 
-    fn gen_io_error() -> std::result::Result<i32, io::Error> {
-        Err(io::Error::new(io::ErrorKind::Other, "Oh no!"))
+    fn gen_result_io_error() -> std::result::Result<i32, io::Error> {
+        Err(io::Error::new(io::ErrorKind::Other, "Custom I/O error"))
     }
 
     fn local_proc() -> Result<i32> {
-        //gen_io_error()?;
-        let err_msg = String::from("Only a test");
+        gen_result_io_error()?;
 
-        return Err(Error::new_client_error(Some(err_msg.as_str()), None::<GenericError>));
+        Ok(0)
+    }
 
-        Ok(5)
+    fn simulate_error_http_response() -> blk_reqwest::Response {
+        blk_reqwest::get("https://sandbox.catenis.io/bla").unwrap()
+    }
+
+    fn simulate_success_http_response() -> blk_reqwest::Response {
+        blk_reqwest::get("https://google.com").unwrap()
     }
 
     #[test]
-    fn it_convert_errors() {
-        let result = local_proc();
+    fn it_convert_error() {
+        let proc_result = local_proc();
 
-        println!("Local processing result: {}", result.err().unwrap());
+        assert_eq!(proc_result.is_err(), true);
+        assert_eq!(proc_result.err().unwrap().to_string(), "Catenis client error: Custom I/O error");
     }
 
     #[test]
-    fn it_generate_api_error() {
-        Error::new_api_error(StatusCode::BAD_REQUEST, Some("Sample text message"), Some("Sample Catenis error message"));
+    fn it_generate_client_error_no_source() {
+        let err = Error::new_client_error(None, None::<GenericError>);
+
+        assert_eq!(err.is_api_error(), false);
+        assert_eq!(err.to_string(), "Catenis client error");
+    }
+
+    #[test]
+    fn it_generate_custom_client_error_no_source() {
+        let err = Error::new_client_error(Some("Sample client error description"), None::<GenericError>);
+
+        assert_eq!(err.is_api_error(), false);
+        assert_eq!(err.to_string(), "Catenis client error: Sample client error description");
+    }
+
+    #[test]
+    fn it_generate_client_error_with_source() {
+        let source_err = gen_result_io_error().err().unwrap();
+        let err = Error::new_client_error(None, Some(source_err));
+
+        assert_eq!(err.is_api_error(), false);
+        assert_eq!(err.to_string(), "Catenis client error: Custom I/O error");
+    }
+
+    #[test]
+    fn it_generate_custom_client_error_with_source() {
+        let source_err = gen_result_io_error().err().unwrap();
+        let err = Error::new_client_error(Some("Sample client error description"), Some(source_err));
+
+        assert_eq!(err.is_api_error(), false);
+        assert_eq!(err.to_string(), "Catenis client error: Sample client error description: Custom I/O error");
+    }
+
+    #[test]
+    fn it_generate_api_error_not_ctn() {
+        let err = Error::new_api_error(StatusCode::BAD_REQUEST, None, None);
+
+        assert_eq!(err.is_api_error(), true);
+        assert_eq!(err.to_string(), "Catenis API error: [400] - Bad Request");
+    }
+
+    #[test]
+    fn it_generate_custom_api_error_not_ctn() {
+        let err = Error::new_api_error(StatusCode::BAD_REQUEST, Some("Custom HTTP error message"), None);
+
+        assert_eq!(err.is_api_error(), true);
+        assert_eq!(err.to_string(), "Catenis API error: [400] - Custom HTTP error message");
+    }
+
+    #[test]
+    fn it_generate_api_error_ctn() {
+        let err = Error::new_api_error(StatusCode::BAD_REQUEST, None, Some("Sample Catenis error message"));
+
+        assert_eq!(err.is_api_error(), true);
+        assert_eq!(err.to_string(), "Catenis API error: [400] - Sample Catenis error message");
+    }
+
+    #[test]
+    fn it_generate_custom_api_error_ctn() {
+        let err = Error::new_api_error(StatusCode::BAD_REQUEST, Some("Custom HTTP error message"), Some("Sample Catenis error message"));
+
+        assert_eq!(err.is_api_error(), true);
+        assert_eq!(err.to_string(), "Catenis API error: [400] - Sample Catenis error message");
+    }
+
+    #[test]
+    fn it_generate_from_http_response() {
+        let res = simulate_error_http_response();
+
+        assert_eq!(res.status().is_success(), false);
+
+        let err = Error::from_http_response(res);
+
+        assert_eq!(err.is_api_error(), true);
+        assert_eq!(err.to_string().starts_with("Catenis API error: [404] - <html>\r\n<head><title>404 Not Found</title>"), true);
+    }
+
+    #[test]
+    fn it_try_generate_from_http_response() {
+        let res = simulate_success_http_response();
+
+        assert_eq!(res.status().is_success(), true);
+
+        let err = Error::from_http_response(res);
+
+        assert_eq!(err.is_api_error(), false);
+        assert_eq!(err.to_string(), "Catenis client error: Trying to process successful http response as an error");
     }
 }
