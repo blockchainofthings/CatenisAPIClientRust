@@ -1,4 +1,3 @@
-use reqwest::Response;
 use crate::error::*;
 
 impl Error {

@@ -1,10 +1,5 @@
 use std::{
     borrow::Borrow,
-    fmt,
-    fmt::{
-        Display, Formatter,
-    },
-    io::Read,
 };
 use bitcoin_hashes::{
     Hash, HashEngine, hex::ToHex, Hmac,
@@ -24,7 +19,7 @@ use async_compression::{
 };
 use tokio::io::AsyncReadExt;
 use time::{
-    OffsetDateTime, Date, Duration,
+    OffsetDateTime,
 };
 use serde::de::DeserializeOwned;
 use crate::*;
