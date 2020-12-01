@@ -101,8 +101,6 @@ impl<'a> WsNotifyChannel<'a> {
         where
             F: Fn(WsNotifyChannelEvent) + Send + 'static
     {
-        let notify_event_handler = Box::new(notify_event_handler);
-
         // Prepare to connect to Catenis WebSocket notification service
         //  Note: this request is only used to assemble the URL for the notification service
         //      and generate the required data for authentication with the notification service.
@@ -150,8 +148,6 @@ impl<'a> WsNotifyChannel<'a> {
         self.tx = Some(tx);
 
         Ok(thread::spawn(move || {
-            let event_handler = notify_event_handler;
-
             // Create notification event handler thread
             let (h_tx, h_rx) = mpsc::channel();
 
@@ -166,7 +162,7 @@ impl<'a> WsNotifyChannel<'a> {
                                 },
                                 NotifyEventHandlerMessage::NotifyEvent(event) => {
                                     // Call handler passing notification event
-                                    (*event_handler)(event);
+                                    notify_event_handler(event);
                                 }
                             }
                         },
@@ -213,7 +209,10 @@ impl<'a> WsNotifyChannel<'a> {
                 match rx.try_recv() {
                     Ok(msg) => {
                         match msg {
-                            WsNotifyChannelCommand::Drop => Some(()),
+                            WsNotifyChannelCommand::Drop => {
+                                // Indicate that current thread should exit
+                                Some(())
+                            },
                             WsNotifyChannelCommand::Close => {
                                 // Close WebSocket connection
                                 if let Err(err) = ws2.close(Some(CloseFrame {

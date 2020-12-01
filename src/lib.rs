@@ -89,6 +89,7 @@ pub struct CatenisClient<'a> {
     sign_date: Option<Date>,
     signing_key: Option<[u8; 32]>,
     http_client: Option<blk_reqwest::Client>,
+    #[cfg(feature = "async")]
     http_client_async: Option<reqwest::Client>,
 }
 
@@ -113,6 +114,7 @@ impl<'a> CatenisClient<'a> {
             sign_date: None,
             signing_key: None,
             http_client: Some(Self::new_http_client(use_compression)?),
+            #[cfg(feature = "async")]
             http_client_async: None,
         })
     }
@@ -190,6 +192,7 @@ impl<'a> CatenisClient<'a> {
             sign_date: None,
             signing_key: None,
             http_client: Some(Self::new_http_client(use_compression)?),
+            #[cfg(feature = "async")]
             http_client_async: None,
         })
     }
