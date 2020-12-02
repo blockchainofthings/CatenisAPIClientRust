@@ -14,17 +14,15 @@ use reqwest::{
         HeaderValue,
     },
 };
-use tokio_tungstenite::{
-    tungstenite::{
-        self,
-        Message, WebSocket,
-        protocol::{
-            frame::coding::CloseCode,
-            CloseFrame
-        },
-        client::{
-            IntoClientRequest, AutoStream,
-        },
+use tungstenite::{
+    self,
+    Message, WebSocket,
+    protocol::{
+        frame::coding::CloseCode,
+        CloseFrame
+    },
+    client::{
+        IntoClientRequest, AutoStream,
     },
 };
 use serde::{
