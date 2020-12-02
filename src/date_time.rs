@@ -56,8 +56,10 @@ impl UtcDateTime {
     pub fn is_valid(&self) -> bool {
         self.inner != INVALID_DATE_TIME
     }
-    
-    pub fn as_ref(&self) -> &OffsetDateTime {
+}
+
+impl AsRef<OffsetDateTime> for UtcDateTime {
+    fn as_ref(&self) -> &OffsetDateTime {
         &self.inner
     }
 }
