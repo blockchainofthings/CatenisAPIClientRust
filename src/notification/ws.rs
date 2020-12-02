@@ -380,7 +380,8 @@ impl<'a> WsNotifyChannel<'a> {
                         if let tungstenite::error::Error::ConnectionClosed = err {
                             // WebSocket connection has been closed
                         } else {
-                            // Any other error. Send error message to notification event handler thread...
+                            // Any other error. Send error message to notification event
+                            //  handler thread
                             h_tx.send(
                                 NotifyEventHandlerMessage::NotifyEvent(
                                     WsNotifyChannelEvent::Error(
@@ -411,7 +412,7 @@ impl<'a> WsNotifyChannel<'a> {
 
     pub fn close(&mut self) {
         if let Some(tx) = &self.tx {
-            // Send command to notification event handling thread to close WebSocket
+            // Send command to notification event handler thread to close WebSocket
             //  notification channel
             tx.send(WsNotifyChannelCommand::Close).unwrap_or(());
         }
@@ -421,7 +422,7 @@ impl<'a> WsNotifyChannel<'a> {
 impl<'a> Drop for WsNotifyChannel<'a> {
     fn drop(&mut self) {
         if let Some(tx) = &self.tx {
-            // Send command to notification event handling thread to stop it
+            // Send command to notification event handler thread to stop it
             tx.send(WsNotifyChannelCommand::Drop).unwrap_or(());
         }
     }
