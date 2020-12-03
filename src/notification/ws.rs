@@ -16,7 +16,7 @@ use reqwest::{
 };
 use tungstenite::{
     self,
-    Message, WebSocket,
+    Message,
     protocol::{
         frame::coding::CloseCode,
         CloseFrame
@@ -139,6 +139,16 @@ impl<'a> WsNotifyChannel<'a> {
                 Some(err)
             ))?;
 
+        // Set read timeout for WebSocket connection
+        match ws.get_ref() {
+            AutoStream::Plain(stream) =>  stream,
+            AutoStream::Tls(tls_stream) => tls_stream.get_ref(),
+        }.set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .map_err(|err| Error::new_client_error(
+                Some("Failed to set read timeout for WebSocket connection"),
+                Some(err)
+            ))?;
+
         // Prepare to create thread to run WebSocket connection
         let (tx, rx) = mpsc::channel();
 
@@ -151,7 +161,7 @@ impl<'a> WsNotifyChannel<'a> {
 
             thread::spawn(move || {
                 loop {
-                    match h_rx.try_recv() {
+                    match h_rx.recv() {
                         Ok(msg) => {
                             match msg {
                                 NotifyEventHandlerMessage::Drop => {
@@ -164,12 +174,10 @@ impl<'a> WsNotifyChannel<'a> {
                                 }
                             }
                         },
-                        Err(err) => {
-                            if let TryRecvError::Disconnected = err {
-                                // Lost communication with parent thread. End this thread
-                                break;
-                            }
-                        }
+                        Err(_) => {
+                            // Lost communication with parent thread. End this thread
+                            break;
+                        },
                     }
                 }
             });
@@ -202,69 +210,8 @@ impl<'a> WsNotifyChannel<'a> {
                 return;
             }
 
-            // Function used to receive and process command from parent thread
-            let process_command = |ws2: &mut WebSocket<AutoStream>| -> Option<()> {
-                match rx.try_recv() {
-                    Ok(msg) => {
-                        match msg {
-                            WsNotifyChannelCommand::Drop => {
-                                // Indicate that current thread should exit
-                                Some(())
-                            },
-                            WsNotifyChannelCommand::Close => {
-                                // Close WebSocket connection
-                                if let Err(err) = ws2.close(Some(CloseFrame {
-                                    code: CloseCode::Normal,
-                                    reason: Cow::from("")
-                                })) {
-                                    if let tungstenite::error::Error::ConnectionClosed = err {
-                                        // WebSocket connection has already been closed. Just
-                                        //  indicate that current thread should exit
-                                        Some(())
-                                    } else {
-                                        // Any other error. Send error message to notification
-                                        //  event handler thread...
-                                        h_tx.send(
-                                            NotifyEventHandlerMessage::NotifyEvent(
-                                                WsNotifyChannelEvent::Error(
-                                                    Error::new_client_error(
-                                                        Some("Failed to close WebSocket connection"),
-                                                        Some(err)
-                                                    )
-                                                )
-                                            )
-                                        ).unwrap_or(());
-
-                                        // and indicate that current thread should exit
-                                        Some(())
-                                    }
-                                } else {
-                                    None
-                                }
-                            },
-                        }
-                    },
-                    Err(err) => {
-                        match err {
-                            TryRecvError::Disconnected => {
-                                // Indicate that current thread should exit
-                                Some(())
-                            },
-                            TryRecvError::Empty => None,
-                        }
-                    }
-                }
-            };
-
-            // Check for command from parent thread before entering loop to receive
-            //  data from WebSocket connection
-            if let Some(()) = process_command(&mut ws) {
-                // Exit current thread (requesting child thread to exit too)
-                h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
-                return;
-            }
-
             loop {
+                // Receive data from WebSocket connection
                 match ws.read_message() {
                     Ok(msg) => {
                         match msg {
@@ -377,10 +324,39 @@ impl<'a> WsNotifyChannel<'a> {
                         }
                     },
                     Err(err) => {
-                        if let tungstenite::error::Error::ConnectionClosed = err {
-                            // WebSocket connection has been closed
-                        } else {
-                            // Any other error. Send error message to notification event
+                        let mut err_to_report = None;
+                        let mut exit = false;
+
+                        match &err {
+                            tungstenite::error::Error::Io(io_err) => {
+                                match io_err.kind() {
+                                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => {
+                                        // Timeout reading data from WebSocket connection. Just
+                                        //  continue processing
+                                    },
+                                    _ => {
+                                        // Any other I/O error. Indicate that error should be
+                                        //  reported and thread exited
+                                        err_to_report = Some(err);
+                                        exit = true;
+                                    }
+                                }
+                            },
+                            tungstenite::error::Error::ConnectionClosed => {
+                                // WebSocket connection has been closed. Indicate that
+                                //  thread should be exited
+                                exit = true;
+                            },
+                            _ => {
+                                // Any other error. Indicate that error should be
+                                //  reported and thread exited
+                                err_to_report = Some(err);
+                                exit = true;
+                            }
+                        }
+
+                        if let Some(err) = err_to_report {
+                            // Send error message to notification event
                             //  handler thread
                             h_tx.send(
                                 NotifyEventHandlerMessage::NotifyEvent(
@@ -392,25 +368,77 @@ impl<'a> WsNotifyChannel<'a> {
                                     )
                                 )
                             ).unwrap_or(());
-                        };
+                        }
 
-                        // Exit current thread (requesting child thread to exit too)
-                        h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
-                        return;
+                        if exit {
+                            // Exit current thread (requesting child thread to exit too)
+                            h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
+                            return;
+                        }
                     }
                 }
 
-                // Check for command from parent thread
-                if let Some(()) = process_command(&mut ws) {
-                    // Exit current thread (requesting child thread to exit too)
-                    h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
-                    return;
+                // Check for command from main thread
+                match rx.try_recv() {
+                    Ok(msg) => {
+                        match msg {
+                            WsNotifyChannelCommand::Drop => {
+                                // Exit current thread (requesting child thread to exit too)
+                                h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
+                                return;
+                            },
+                            WsNotifyChannelCommand::Close => {
+                                // Close WebSocket connection
+                                if let Err(err) = ws.close(Some(CloseFrame {
+                                    code: CloseCode::Normal,
+                                    reason: Cow::from("")
+                                })) {
+                                    if let tungstenite::error::Error::ConnectionClosed = err {
+                                        // WebSocket connection has already been closed. Just exit
+                                        //  current thread (requesting child thread to exit too)
+                                        h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
+                                        return;
+                                    } else {
+                                        // Any other error. Send error message to notification
+                                        //  event handler thread...
+                                        h_tx.send(
+                                            NotifyEventHandlerMessage::NotifyEvent(
+                                                WsNotifyChannelEvent::Error(
+                                                    Error::new_client_error(
+                                                        Some("Failed to close WebSocket connection"),
+                                                        Some(err)
+                                                    )
+                                                )
+                                            )
+                                        ).unwrap_or(());
+
+                                        // and exit current thread (requesting child thread to exit too)
+                                        h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
+                                        return;
+                                    }
+                                }
+                            },
+                        }
+                    },
+                    Err(err) => {
+                        match err {
+                            TryRecvError::Disconnected => {
+                                // Lost communication with main thread. Exit current thread
+                                //  (requesting child thread to exit too)
+                                h_tx.send(NotifyEventHandlerMessage::Drop).unwrap_or(());
+                                return;
+                            },
+                            TryRecvError::Empty => {
+                                // No data to be received now. Just continue processing
+                            }
+                        }
+                    },
                 }
             }
         }))
     }
 
-    pub fn close(&mut self) {
+    pub fn close(&self) {
         if let Some(tx) = &self.tx {
             // Send command to notification event handler thread to close WebSocket
             //  notification channel
@@ -507,7 +535,7 @@ mod tests {
         }).unwrap();
 
         // Wait for events to be received
-        thread::sleep(std::time::Duration::from_secs(60));
+        thread::sleep(std::time::Duration::from_secs(30));
 
         // Close WebSocket notification channel
         notify_channel.close();
