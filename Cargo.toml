@@ -10,8 +10,12 @@ edition = "2018"
 [features]
 async = [
     "async-compression",
-    "tokio-tungstenite",
+    "tokio-tungstenite/connect",
+    "tokio-tungstenite/tls",
+    "tokio/rt-core",
     "tokio/io-util",
+    "tokio/sync",
+    "tokio/time",
 ]
 
 [dependencies]
@@ -27,12 +31,13 @@ url = "2.2"
 # NOTE: the version of the 'tungstenite' package must match the version of that
 #       package on which the 'tokio-tungstenite' package depends
 tungstenite = "0.11"
-tokio-tungstenite = { version = "0.11", optional = true }
+tokio-tungstenite = { version = "0.11", default-features = false, features = ["connect", "tls"], optional = true }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 bitcoin_hashes = "0.9"
 time = { version = "0.2", features = ["serde"] }
 flate2 = "1.0"
 async-compression = { version = "0.3", default-features = false, features = ["tokio-02", "deflate"], optional = true }
-tokio = { version = "0.2", default-features = false, features = ["io-util"], optional = true }
+tokio = { version = "0.2", default-features = false, features = ["rt-core", "io-util", "sync", "time"], optional = true }
 regex = "1"
 
 [dev-dependencies]

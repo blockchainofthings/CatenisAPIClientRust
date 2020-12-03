@@ -46,7 +46,7 @@ pub use date_time::UtcDateTime;
 pub use api::*;
 pub use notification::*;
 
-const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
+pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
 const API_BASE_URL_PATH: &str = "api/:version/";
 const DEFAULT_API_VERSION: ApiVersion = ApiVersion(0, 10);

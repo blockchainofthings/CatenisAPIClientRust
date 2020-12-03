@@ -239,7 +239,24 @@ impl<'a> CatenisClient<'a> {
             .map_err(Into::into)
     }
 
-    fn sign_request_async(&mut self, req: &mut reqwest::Request) -> Result<()> {
+    pub(crate) fn get_ws_request_async<I, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>) -> Result<reqwest::Request>
+        where
+            I: IntoIterator,
+            K: AsRef<str>,
+            V: AsRef<str>,
+            <I as IntoIterator>::Item: Borrow<(K, V)>,
+    {
+        let mut req = self.get_request_async(endpoint_url_path, url_params, None::<KVList>)?;
+
+        // Replace URL scheme as appropriate
+        if let Err(_) = req.url_mut().set_scheme(if self.is_secure {"wss"} else {"ws"}) {
+            return Err(Error::new_client_error(Some("Error resetting URL scheme"), None::<GenericError>));
+        }
+
+        Ok(req)
+    }
+
+    pub(crate) fn sign_request_async(&mut self, req: &mut reqwest::Request) -> Result<()> {
         let mut new_headers = HeaderMap::new();
         let now;
         let timestamp;

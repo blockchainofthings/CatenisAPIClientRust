@@ -25,6 +25,10 @@ use tungstenite::{
         IntoClientRequest, AutoStream,
     },
 };
+#[cfg(feature = "async")]
+use tokio::sync::{
+    mpsc as tk_mpsc,
+};
 use serde::{
     Serialize,
 };
@@ -39,8 +43,8 @@ use crate::{
     error::GenericError,
 };
 
-const NOTIFY_WS_PROTOCOL: &str = "notify.catenis.io";
-const NOTIFY_WS_CHANNEL_OPEN: &str = "NOTIFICATION_CHANNEL_OPEN";
+pub(crate) const NOTIFY_WS_PROTOCOL: &str = "notify.catenis.io";
+pub(crate) const NOTIFY_WS_CHANNEL_OPEN: &str = "NOTIFICATION_CHANNEL_OPEN";
 
 pub(crate) fn format_vec_limit<T>(v: Vec<T>, limit: usize) -> String
     where
@@ -57,17 +61,17 @@ pub(crate) fn format_vec_limit<T>(v: Vec<T>, limit: usize) -> String
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct WsNotifyChannelAuthentication {
-    x_bcot_timestamp: String,
-    authorization: String,
+pub(crate) struct WsNotifyChannelAuthentication {
+    pub(crate) x_bcot_timestamp: String,
+    pub(crate) authorization: String,
 }
 
-enum WsNotifyChannelCommand {
+pub(crate) enum WsNotifyChannelCommand {
     Close,
     Drop,
 }
 
-enum NotifyEventHandlerMessage {
+pub(crate) enum NotifyEventHandlerMessage {
     Drop,
     NotifyEvent(WsNotifyChannelEvent),
 }
@@ -81,9 +85,11 @@ pub enum WsNotifyChannelEvent {
 
 #[derive(Debug)]
 pub struct WsNotifyChannel<'a>{
-    api_client: &'a mut CatenisClient<'a>,
-    event: NotificationEvent,
+    pub(crate) api_client: &'a mut CatenisClient<'a>,
+    pub(crate) event: NotificationEvent,
     tx: Option<Sender<WsNotifyChannelCommand>>,
+    #[cfg(feature = "async")]
+    pub(crate) tx_async: Option<tk_mpsc::Sender<WsNotifyChannelCommand>>,
 }
 
 impl<'a> WsNotifyChannel<'a> {
@@ -92,6 +98,8 @@ impl<'a> WsNotifyChannel<'a> {
             api_client,
             event,
             tx: None,
+            #[cfg(feature = "async")]
+            tx_async: None,
         }
     }
 
