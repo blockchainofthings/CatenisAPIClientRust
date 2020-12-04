@@ -36,15 +36,32 @@ use tokio::{
 };
 
 use crate::{
-    X_BCOT_TIMESTAMP,
-    error::{
-        Error, Result, GenericError,
+    CatenisClient,
+    api::{
+        NotificationEvent,
     },
+    Result, Error, X_BCOT_TIMESTAMP,
+    error::GenericError,
     notification::*,
 };
 
-impl WsNotifyChannel {
-    pub async fn open_async<F>(&mut self, notify_event_handler: F) -> Result<JoinHandle<()>>
+#[derive(Debug, Clone)]
+pub struct AsyncWsNotifyChannel{
+    pub(crate) api_client: CatenisClient,
+    pub(crate) event: NotificationEvent,
+    pub(crate) tx: Option<mpsc::Sender<WsNotifyChannelCommand>>,
+}
+
+impl AsyncWsNotifyChannel {
+    pub(crate) fn new(api_client: &CatenisClient, event: NotificationEvent) -> Self {
+        AsyncWsNotifyChannel {
+            api_client: api_client.clone(),
+            event,
+            tx: None,
+        }
+    }
+
+    pub async fn open<F>(&mut self, notify_event_handler: F) -> Result<JoinHandle<()>>
         where
             F: Fn(WsNotifyChannelEvent) + Send + 'static
     {
@@ -93,7 +110,7 @@ impl WsNotifyChannel {
         let (tx, mut rx) = mpsc::channel(128);
 
         // Save communication channel with WebSocket async task
-        self.tx_async = Some(tx);
+        self.tx = Some(tx);
 
         Ok(tokio::spawn(async move {
             // Create notification event handler async task
@@ -365,8 +382,8 @@ impl WsNotifyChannel {
         }))
     }
 
-    pub async fn close_async(&mut self) {
-        if let Some(tx) = &mut self.tx_async {
+    pub async fn close(&mut self) {
+        if let Some(tx) = &mut self.tx {
             // Send command to notification event handler async task to close
             //  WebSocket notification channel
             tx.send(WsNotifyChannelCommand::Close).await.unwrap_or(());
@@ -374,11 +391,8 @@ impl WsNotifyChannel {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[tokio::test]
     async fn it_opens_async_ws_notify_channel() {
         use std::sync::{Arc, Mutex};
@@ -399,7 +413,7 @@ mod tests {
 
         // Open WebSocket notification channel closing it after first notify message is received
         let notify_channel = Arc::new(Mutex::new(
-            ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived)
+            ctn_client.new_async_ws_notify_channel(NotificationEvent::NewMsgReceived)
         ));
         let notify_channel_2 = notify_channel.clone();
 
@@ -409,7 +423,7 @@ mod tests {
             notify_task = notify_channel.lock().unwrap()
                 // Note: we need to access a reference of notify_channel inside the notify_event_handler
                 //  closure. That's why we need to wrap it around Arc<Mutex<>> (see above)
-                .open_async(move |event: WsNotifyChannelEvent| {
+                .open(move |event: WsNotifyChannelEvent| {
                     // Note: clone (the dereferenced) notify_channel so it can be moved into
                     //  spawned async task
                     let mut notify_channel = (&*notify_channel_2.lock().unwrap()).clone();
@@ -427,7 +441,7 @@ mod tests {
                             },
                             WsNotifyChannelEvent::Notify(notify_msg) => {
                                 println!(">>>>>> WebSocket Notification Channel: Notify event: {:?}", notify_msg);
-                                notify_channel.close_async().await;
+                                notify_channel.close().await;
                             },
                         }
                     });
@@ -443,7 +457,7 @@ mod tests {
         tokio::spawn(async move {
             tokio::time::delay_for(std::time::Duration::from_secs(30)).await;
 
-            notify_channel_3.close_async().await;
+            notify_channel_3.close().await;
         });
 
         // Wait for notification task to end

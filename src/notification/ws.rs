@@ -25,10 +25,6 @@ use tungstenite::{
         IntoClientRequest, AutoStream,
     },
 };
-#[cfg(feature = "async")]
-use tokio::sync::{
-    mpsc as tk_mpsc,
-};
 use serde::{
     Serialize,
 };
@@ -88,8 +84,6 @@ pub struct WsNotifyChannel{
     pub(crate) api_client: CatenisClient,
     pub(crate) event: NotificationEvent,
     tx: Option<SyncSender<WsNotifyChannelCommand>>,
-    #[cfg(feature = "async")]
-    pub(crate) tx_async: Option<tk_mpsc::Sender<WsNotifyChannelCommand>>,
 }
 
 impl WsNotifyChannel {
@@ -98,8 +92,6 @@ impl WsNotifyChannel {
             api_client: api_client.clone(),
             event,
             tx: None,
-            #[cfg(feature = "async")]
-            tx_async: None,
         }
     }
 

@@ -23,6 +23,7 @@ use time::{
 };
 use serde::de::DeserializeOwned;
 use crate::*;
+use super::notification::AsyncWsNotifyChannel;
 
 impl CatenisClient {
     // Definition of public methods
@@ -124,6 +125,10 @@ impl CatenisClient {
             http_client: None,
             http_client_async: Some(Self::new_http_client_async(use_compression)?),
         })
+    }
+
+    pub fn new_async_ws_notify_channel(&self, notify_event: NotificationEvent) -> AsyncWsNotifyChannel {
+        AsyncWsNotifyChannel::new(self, notify_event)
     }
 
     pub async fn log_message_async(&mut self, message: &str, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {

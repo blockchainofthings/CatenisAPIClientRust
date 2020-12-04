@@ -197,6 +197,10 @@ impl CatenisClient {
         })
     }
 
+    pub fn new_ws_notify_channel(&self, notify_event: NotificationEvent) -> WsNotifyChannel {
+        WsNotifyChannel::new(self, notify_event)
+    }
+
     pub fn log_message(&mut self, message: &str, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
         let body = LogMessageRequest {
             message: String::from(message),
@@ -208,10 +212,6 @@ impl CatenisClient {
         let res = self.sign_and_send_request(req)?;
 
         Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
-    }
-
-    pub fn new_ws_notify_channel(&self, notify_event: NotificationEvent) -> WsNotifyChannel {
-        WsNotifyChannel::new(self, notify_event)
     }
 
     // Definition of private methods
