@@ -78,10 +78,10 @@ pub enum ClientOptions<'a> {
     CompressThreshold(usize),
 }
 
-#[derive(Debug)]
-pub struct CatenisClient<'a> {
-    api_access_secret: &'a str,
-    device_id: &'a str,
+#[derive(Debug, Clone)]
+pub struct CatenisClient {
+    api_access_secret: String,
+    device_id: String,
     base_api_url: Url,
     is_secure: bool,
     use_compression: bool,
@@ -93,10 +93,10 @@ pub struct CatenisClient<'a> {
     http_client_async: Option<reqwest::Client>,
 }
 
-impl<'a> CatenisClient<'a> {
+impl CatenisClient {
     // Definition of public methods
 
-    pub fn new(api_access_secret: &'a str, device_id: &'a str) -> Result<Self>
+    pub fn new(api_access_secret: &str, device_id: &str) -> Result<Self>
     {
         let base_url = Url::parse(DEFAULT_BASE_URL)?;
         let api_version = DEFAULT_API_VERSION;
@@ -105,8 +105,8 @@ impl<'a> CatenisClient<'a> {
         let compress_threshold: usize = 1024;
 
         Ok(CatenisClient {
-            api_access_secret,
-            device_id,
+            api_access_secret: String::from(api_access_secret),
+            device_id: String::from(device_id),
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             is_secure,
             use_compression,
@@ -119,7 +119,7 @@ impl<'a> CatenisClient<'a> {
         })
     }
 
-    pub fn new_with_options<I>(api_access_secret: &'a str, device_id: &'a str, opts: I) -> Result<Self>
+    pub fn new_with_options<'a, I>(api_access_secret: &str, device_id: &str, opts: I) -> Result<Self>
         where
             I: IntoIterator,
             <I as IntoIterator>::Item: Borrow<ClientOptions<'a>>
@@ -183,8 +183,8 @@ impl<'a> CatenisClient<'a> {
         }
 
         Ok(CatenisClient {
-            api_access_secret,
-            device_id,
+            api_access_secret: String::from(api_access_secret),
+            device_id: String::from(device_id),
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             is_secure,
             use_compression,
@@ -210,7 +210,7 @@ impl<'a> CatenisClient<'a> {
         Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
     }
 
-    pub fn new_ws_notify_channel(&'a mut self, notify_event: NotificationEvent) -> WsNotifyChannel {
+    pub fn new_ws_notify_channel(&self, notify_event: NotificationEvent) -> WsNotifyChannel {
         WsNotifyChannel::new(self, notify_event)
     }
 
@@ -413,7 +413,7 @@ impl<'a> CatenisClient<'a> {
         let signature = Hmac::<sha256::Hash>::from_engine(hmac_engine).to_hex();
 
         // Add 'authorization' header to HTTP request
-        let value = String::from("CTN1-HMAC-SHA256 Credential=") + self.device_id + "/"
+        let value = String::from("CTN1-HMAC-SHA256 Credential=") + self.device_id.as_str() + "/"
             + &scope + ",Signature=" + &signature;
 
         req.headers_mut().insert(AUTHORIZATION, value.parse()?);
@@ -436,7 +436,7 @@ impl<'a> CatenisClient<'a> {
             self.sign_date = Some(now.date());
 
             // Generate new signing key
-            let inner_key = String::from("CTN1") + self.api_access_secret;
+            let inner_key = String::from("CTN1") + self.api_access_secret.as_str();
             let mut hmac_engine = HmacEngine::<sha256::Hash>::new(inner_key.as_bytes());
             hmac_engine.input(self.sign_date.unwrap().format("%Y%m%d").as_bytes());
             let date_key = &Hmac::<sha256::Hash>::from_engine(hmac_engine)[..];
@@ -839,7 +839,7 @@ mod tests {
         let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
         let device_id = "drc3XdxNtzoucpw9xiRp";
 
-        let mut ctn_client = CatenisClient::new_with_options(
+        let ctn_client = CatenisClient::new_with_options(
             api_access_secret,
             device_id,
             &[

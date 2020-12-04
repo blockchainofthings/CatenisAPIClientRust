@@ -24,10 +24,10 @@ use time::{
 use serde::de::DeserializeOwned;
 use crate::*;
 
-impl<'a> CatenisClient<'a> {
+impl CatenisClient {
     // Definition of public methods
 
-    pub fn new_async(api_access_secret: &'a str, device_id: &'a str) -> Result<Self>
+    pub fn new_async(api_access_secret: &str, device_id: &str) -> Result<Self>
     {
         let base_url = Url::parse(DEFAULT_BASE_URL)?;
         let api_version = DEFAULT_API_VERSION;
@@ -36,8 +36,8 @@ impl<'a> CatenisClient<'a> {
         let compress_threshold: usize = 1024;
 
         Ok(CatenisClient {
-            api_access_secret,
-            device_id,
+            api_access_secret: String::from(api_access_secret),
+            device_id: String::from(device_id),
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             is_secure,
             use_compression,
@@ -49,7 +49,7 @@ impl<'a> CatenisClient<'a> {
         })
     }
 
-    pub fn new_async_with_options<I>(api_access_secret: &'a str, device_id: &'a str, opts: I) -> Result<Self>
+    pub fn new_async_with_options<'a, I>(api_access_secret: &str, device_id: &str, opts: I) -> Result<Self>
         where
             I: IntoIterator,
             <I as IntoIterator>::Item: Borrow<ClientOptions<'a>>
@@ -113,8 +113,8 @@ impl<'a> CatenisClient<'a> {
         }
 
         Ok(CatenisClient {
-            api_access_secret,
-            device_id,
+            api_access_secret: String::from(api_access_secret),
+            device_id: String::from(device_id),
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             is_secure,
             use_compression,
@@ -339,7 +339,7 @@ impl<'a> CatenisClient<'a> {
         let signature = Hmac::<sha256::Hash>::from_engine(hmac_engine).to_hex();
 
         // Add 'authorization' header to HTTP request
-        let value = String::from("CTN1-HMAC-SHA256 Credential=") + self.device_id + "/"
+        let value = String::from("CTN1-HMAC-SHA256 Credential=") + self.device_id.as_str() + "/"
             + &scope + ",Signature=" + &signature;
 
         req.headers_mut().insert(AUTHORIZATION, value.parse()?);

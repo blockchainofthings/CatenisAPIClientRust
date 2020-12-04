@@ -515,7 +515,7 @@ pub struct ClientInfo {
     pub name: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum NotificationEvent {
     NewMsgReceived,
     SentMsgRead,

@@ -4,7 +4,7 @@ use std::{
     },
     sync::mpsc::{
         self,
-        Sender, TryRecvError,
+        SyncSender, TryRecvError,
     },
     borrow::Cow
 };
@@ -83,19 +83,19 @@ pub enum WsNotifyChannelEvent {
     Notify(NotificationMessage)
 }
 
-#[derive(Debug)]
-pub struct WsNotifyChannel<'a>{
-    pub(crate) api_client: &'a mut CatenisClient<'a>,
+#[derive(Debug, Clone)]
+pub struct WsNotifyChannel{
+    pub(crate) api_client: CatenisClient,
     pub(crate) event: NotificationEvent,
-    tx: Option<Sender<WsNotifyChannelCommand>>,
+    tx: Option<SyncSender<WsNotifyChannelCommand>>,
     #[cfg(feature = "async")]
     pub(crate) tx_async: Option<tk_mpsc::Sender<WsNotifyChannelCommand>>,
 }
 
-impl<'a> WsNotifyChannel<'a> {
-    pub(crate) fn new(api_client: &'a mut CatenisClient<'a>, event: NotificationEvent) -> Self {
+impl WsNotifyChannel {
+    pub(crate) fn new(api_client: &CatenisClient, event: NotificationEvent) -> Self {
         WsNotifyChannel {
-            api_client,
+            api_client: api_client.clone(),
             event,
             tx: None,
             #[cfg(feature = "async")]
@@ -158,7 +158,7 @@ impl<'a> WsNotifyChannel<'a> {
             ))?;
 
         // Prepare to create thread to run WebSocket connection
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(128);
 
         // Save communication channel with WebSocket thread
         self.tx = Some(tx);
@@ -455,7 +455,7 @@ impl<'a> WsNotifyChannel<'a> {
     }
 }
 
-impl<'a> Drop for WsNotifyChannel<'a> {
+impl Drop for WsNotifyChannel {
     fn drop(&mut self) {
         if let Some(tx) = &self.tx {
             // Send command to notification event handler thread to stop it
@@ -508,12 +508,13 @@ mod tests {
 
     #[test]
     fn it_opens_ws_notify_channel() {
+        use std::sync::{Arc, Mutex};
         use crate::*;
 
         let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
         let device_id = "drc3XdxNtzoucpw9xiRp";
 
-        let mut ctn_client = CatenisClient::new_with_options(
+        let ctn_client = CatenisClient::new_with_options(
             api_access_secret,
             device_id,
             &[
@@ -523,32 +524,47 @@ mod tests {
             ],
         ).unwrap();
 
-        let mut notify_channel = ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived);
+        // Open WebSocket notification channel closing it after first notify message is received
+        let notify_channel = Arc::new(Mutex::new(
+            ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived)
+        ));
+        let notify_channel_2 = notify_channel.clone();
 
-        let notify_thread = notify_channel.open(|event: WsNotifyChannelEvent| {
-            match event {
-                WsNotifyChannelEvent::Error(err) => {
-                    println!(">>>>>> WebSocket Notification Channel: Error event: {:?}", err);
-                },
-                WsNotifyChannelEvent::Open => {
-                    println!(">>>>>> WebSocket Notification Channel: Open event");
-                },
-                WsNotifyChannelEvent::Close(close_info) => {
-                    println!(">>>>>> WebSocket Notification Channel: Close event: {:?}", close_info);
-                },
-                WsNotifyChannelEvent::Notify(notify_msg) => {
-                    println!(">>>>>> WebSocket Notification Channel: Notify event: {:?}", notify_msg);
-                },
-            }
-        }).unwrap();
+        let notify_thread = notify_channel.lock().unwrap()
+            // Note: we need to access a reference of notify_channel inside the notify_event_handler
+            //  closure. That's why we need to wrap it around Arc<Mutex<>> (see above)
+            .open(move |event: WsNotifyChannelEvent| {
+                let notify_channel = notify_channel_2.lock().unwrap();
 
-        // Wait for events to be received
-        thread::sleep(std::time::Duration::from_secs(30));
+                match event {
+                    WsNotifyChannelEvent::Error(err) => {
+                        println!(">>>>>> WebSocket Notification Channel: Error event: {:?}", err);
+                    },
+                    WsNotifyChannelEvent::Open => {
+                        println!(">>>>>> WebSocket Notification Channel: Open event");
+                    },
+                    WsNotifyChannelEvent::Close(close_info) => {
+                        println!(">>>>>> WebSocket Notification Channel: Close event: {:?}", close_info);
+                    },
+                    WsNotifyChannelEvent::Notify(notify_msg) => {
+                        println!(">>>>>> WebSocket Notification Channel: Notify event: {:?}", notify_msg);
+                        notify_channel.close();
+                    },
+                }
+            }).unwrap();
 
-        // Close WebSocket notification channel
-        notify_channel.close();
+        // Set up timeout to close WebSocket notification channel if no notify message
+        //  is received within a given period of time
+        let notify_channel_3 = notify_channel.clone();
+
+        thread::spawn(move || {
+            thread::sleep(std::time::Duration::from_secs(30));
+
+            notify_channel_3.lock().unwrap()
+                .close();
+        });
 
         // Wait for notification thread to end
-        notify_thread.join().unwrap_or(());
+        notify_thread.join().unwrap();
     }
 }
