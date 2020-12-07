@@ -216,19 +216,7 @@ impl CatenisClient {
 
     // Definition of private methods
 
-    fn send_request(&mut self, req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
-        self.check_sign_and_send_request(req, false)
-    }
-
-    fn sign_and_send_request(&mut self, req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
-        self.check_sign_and_send_request(req, true)
-    }
-
-    fn check_sign_and_send_request(&mut self, mut req: blk_reqwest::Request, sign_request: bool) -> Result<blk_reqwest::Response> {
-        if sign_request {
-            self.sign_request(&mut req)?;
-        }
-
+    fn send_request(&self, req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
         let res = self.http_client.as_ref()
             .expect("Trying to access uninitialized HTTP client")
             .execute(req)
@@ -239,6 +227,11 @@ impl CatenisClient {
         } else {
             Err(Error::from_http_response(res))
         }
+    }
+
+    fn sign_and_send_request(&mut self, mut req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
+        self.sign_request(&mut req)?;
+        self.send_request(req)
     }
 
     fn get_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<I2>) -> Result<blk_reqwest::Request>

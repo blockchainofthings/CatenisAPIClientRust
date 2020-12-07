@@ -146,19 +146,7 @@ impl CatenisClient {
 
     // Definition of private methods
 
-    async fn send_request_async(&mut self, req: reqwest::Request) -> Result<reqwest::Response> {
-        self.check_sign_and_send_request_async(req, false).await
-    }
-
-    async fn sign_and_send_request_async(&mut self, req: reqwest::Request) -> Result<reqwest::Response> {
-        self.check_sign_and_send_request_async(req, true).await
-    }
-
-    async fn check_sign_and_send_request_async(&mut self, mut req: reqwest::Request, sign_request: bool) -> Result<reqwest::Response> {
-        if sign_request {
-            self.sign_request_async(&mut req)?;
-        }
-
+    async fn send_request_async(&self, req: reqwest::Request) -> Result<reqwest::Response> {
         let res = self.http_client_async.as_ref()
             .expect("Trying to access uninitialized HTTP client")
             .execute(req)
@@ -170,6 +158,11 @@ impl CatenisClient {
         } else {
             Err(Error::from_http_response_async(res).await)
         }
+    }
+
+    async fn sign_and_send_request_async(&mut self, mut req: reqwest::Request) -> Result<reqwest::Response> {
+        self.sign_request_async(&mut req)?;
+        self.send_request_async(req).await
     }
 
     fn get_request_async<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<I2>) -> Result<reqwest::Request>
