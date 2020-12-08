@@ -82,6 +82,7 @@ pub struct LogMessageOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub storage: Option<Storage>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "async")]
     pub async_: Option<bool>,
 }
 
@@ -99,6 +100,7 @@ pub struct SendMessageOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_confirmation: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "async")]
     pub async_: Option<bool>,
 }
 
@@ -182,6 +184,7 @@ pub struct BatchDocRef {
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainTransaction {
     pub txid: String,
+    #[serde(rename = "type")]
     pub type_: TransactionType,
     pub batch_doc: Option<BatchDocRef>,
     pub origin_device: Option<OriginDeviceInfo>,
@@ -199,6 +202,7 @@ pub enum OffChainMessageType {
 #[serde(rename_all = "camelCase")]
 pub struct OffChainMsgEnvelope {
     pub cid: String,
+    #[serde(rename = "type")]
     pub type_: OffChainMessageType,
     pub origin_device: Option<OffChainOriginDeviceInfo>,
 }
