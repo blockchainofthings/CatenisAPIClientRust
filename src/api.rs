@@ -52,6 +52,16 @@ pub enum Encoding {
     Hex,
 }
 
+impl ToString for Encoding {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            Encoding::UTF8 => "utf8",
+            Encoding::Base64 => "base64",
+            Encoding::Hex => "hex",
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Storage {
@@ -92,16 +102,11 @@ pub struct SendMessageOptions {
     pub async_: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct ReadMessageOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<Encoding>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub continuation_token: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub data_chunk_size: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub async_: Option<bool>,
 }
 

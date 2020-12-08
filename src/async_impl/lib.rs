@@ -208,13 +208,51 @@ impl CatenisClient {
         Ok(Self::parse_response_async::<SendMessageResponse>(res).await?.data)
     }
 
-    pub async fn read_message_async(&mut self, message_id: &str) -> Result<ReadMessageResult> {
+    pub async fn read_message_async(&mut self, message_id: &str, options: Option<ReadMessageOptions>) -> Result<ReadMessageResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let encoding;
+        let continuation_token;
+        let data_chunk_size;
+        let async_;
+        let mut query_params = None;
+
+        if let Some(opt) = options {
+            if let Some(val) = opt.encoding {
+                encoding = val.to_string();
+
+                params_vec.push(("encoding", encoding.as_str()));
+            }
+
+            if let Some(val) = opt.continuation_token {
+                continuation_token = val.to_string();
+
+                params_vec.push(("continuationToken", continuation_token.as_str()));
+            }
+
+            if let Some(val) = opt.data_chunk_size {
+                data_chunk_size = val.to_string();
+
+                params_vec.push(("dataChunkSize", data_chunk_size.as_str()));
+            }
+
+            if let Some(val) = opt.async_ {
+                async_ = val.to_string();
+
+                params_vec.push(("async", async_.as_str()));
+            }
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
         let req = self.get_request_async(
             "messages/:message_id",
             Some(&[
                 ("message_id", message_id),
             ]),
-            None::<KVList>,
+            query_params,
         )?;
 
         let res = self.sign_and_send_request_async(req).await?;
