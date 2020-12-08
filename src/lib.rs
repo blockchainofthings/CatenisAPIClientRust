@@ -12,7 +12,12 @@ use bitcoin_hashes::{
     sha256,
 };
 use reqwest::{
-    blocking as blk_reqwest,
+    Client as AsyncHttpClient,
+    blocking::{
+        Client as HttpClient,
+        ClientBuilder as HttpClientBuilder,
+        Request, Response
+    },
     header::{
         ACCEPT_ENCODING, AUTHORIZATION, CONTENT_TYPE, CONTENT_ENCODING,
         HeaderMap, HeaderName, HeaderValue, HOST,
@@ -88,9 +93,9 @@ pub struct CatenisClient {
     compress_threshold: usize,
     sign_date: Option<Date>,
     signing_key: Option<[u8; 32]>,
-    http_client: Option<blk_reqwest::Client>,
+    http_client: Option<HttpClient>,
     #[cfg(feature = "async")]
-    http_client_async: Option<reqwest::Client>,
+    http_client_async: Option<AsyncHttpClient>,
 }
 
 impl CatenisClient {
@@ -216,7 +221,7 @@ impl CatenisClient {
 
     // Definition of private methods
 
-    fn send_request(&self, req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
+    fn send_request(&self, req: Request) -> Result<Response> {
         let res = self.http_client.as_ref()
             .expect("Trying to access uninitialized HTTP client")
             .execute(req)
@@ -229,12 +234,12 @@ impl CatenisClient {
         }
     }
 
-    fn sign_and_send_request(&mut self, mut req: blk_reqwest::Request) -> Result<blk_reqwest::Response> {
+    fn sign_and_send_request(&mut self, mut req: Request) -> Result<Response> {
         self.sign_request(&mut req)?;
         self.send_request(req)
     }
 
-    fn get_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<I2>) -> Result<blk_reqwest::Request>
+    fn get_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<I2>) -> Result<Request>
         where
             I: IntoIterator,
             K: AsRef<str>,
@@ -263,7 +268,7 @@ impl CatenisClient {
             .map_err(Into::into)
     }
 
-    fn post_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, body: String, url_params: Option<I>, query_params: Option<I2>) -> Result<blk_reqwest::Request>
+    fn post_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, body: String, url_params: Option<I>, query_params: Option<I2>) -> Result<Request>
         where
             I: IntoIterator,
             K: AsRef<str>,
@@ -306,7 +311,7 @@ impl CatenisClient {
             .map_err(Into::into)
     }
 
-    fn get_ws_request<I, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>) -> Result<blk_reqwest::Request>
+    fn get_ws_request<I, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>) -> Result<Request>
         where
             I: IntoIterator,
             K: AsRef<str>,
@@ -323,7 +328,7 @@ impl CatenisClient {
         Ok(req)
     }
 
-    fn sign_request(&mut self, req: &mut blk_reqwest::Request) -> Result<()> {
+    fn sign_request(&mut self, req: &mut Request) -> Result<()> {
         let mut new_headers = HeaderMap::new();
         let now;
         let timestamp;
@@ -443,7 +448,7 @@ impl CatenisClient {
 
     // Definition of private associated ("static") functions
 
-    fn parse_response<T: DeserializeOwned>(res: blk_reqwest::Response) -> Result<T> {
+    fn parse_response<T: DeserializeOwned>(res: Response) -> Result<T> {
         let body = res.text()
             .map_err::<Error, _>(|e| Error::new_client_error(Some("Inconsistent Catenis API response"), Some(e)))?;
 
@@ -451,8 +456,8 @@ impl CatenisClient {
             .map_err::<Error, _>(|e| Error::new_client_error(Some("Inconsistent Catenis API response"), Some(e)))
     }
 
-    fn new_http_client(use_compression: bool) -> reqwest::Result<blk_reqwest::Client> {
-        let mut client_builder = blk_reqwest::ClientBuilder::new();
+    fn new_http_client(use_compression: bool) -> reqwest::Result<HttpClient> {
+        let mut client_builder = HttpClientBuilder::new();
 
         // Prepare to add default HTTP headers
         let mut headers = HeaderMap::new();
