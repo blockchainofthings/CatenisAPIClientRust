@@ -308,7 +308,7 @@ impl ToString for MessageReadStateOption {
 }
 
 #[derive(Debug, Clone)]
-pub struct ListMessagesOption {
+pub struct ListMessagesOptions {
     pub action: Option<MessageActionOption>,
     pub direction: Option<MessageDirectionOption>,
     pub from_devices: Option<Vec<DeviceId>>,

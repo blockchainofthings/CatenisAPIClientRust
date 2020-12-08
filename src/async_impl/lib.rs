@@ -314,7 +314,7 @@ impl CatenisClient {
         Ok(Self::parse_response_async::<RetrieveMessageProgressResponse>(res).await?.data)
     }
 
-    pub async fn list_messages_async(&mut self, options: Option<ListMessagesOption>) -> Result<ListMessagesResult> {
+    pub async fn list_messages_async(&mut self, options: Option<ListMessagesOptions>) -> Result<ListMessagesResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let action;

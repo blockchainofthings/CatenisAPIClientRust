@@ -388,7 +388,7 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrieveMessageProgressResponse>(res)?.data)
     }
 
-    pub fn list_messages(&mut self, options: Option<ListMessagesOption>) -> Result<ListMessagesResult> {
+    pub fn list_messages(&mut self, options: Option<ListMessagesOptions>) -> Result<ListMessagesResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let action;
