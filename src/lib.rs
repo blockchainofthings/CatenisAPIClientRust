@@ -60,12 +60,13 @@ const TIME_VARIATION_SECS: u8 = 5;
 
 type KVList<'a> = &'a [(&'a str, &'a str)];
 
+#[derive(Debug, Copy, Clone)]
 pub enum Environment {
     Prod,
     Sandbox,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct ApiVersion(u16, u16);
 
 impl Display for ApiVersion {
@@ -74,6 +75,7 @@ impl Display for ApiVersion {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum ClientOptions<'a> {
     Host(&'a str),
     Environment(Environment),
@@ -212,11 +214,630 @@ impl CatenisClient {
             options
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request("messages/log", body_json, None::<KVList>, None::<KVList>)?;
+        let req = self.post_request(
+            "messages/log",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        )?;
 
         let res = self.sign_and_send_request(req)?;
 
         Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
+    }
+
+    pub fn log_chunked_message(&mut self, message: ChunkedMessage, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
+        let body = LogChunkedMessageRequest {
+            message,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "messages/log",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
+    }
+
+    pub fn send_message(&mut self, message: &str, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
+        let body = SendMessageRequest {
+            message: String::from(message),
+            target_device,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "messages/send",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<SendMessageResponse>(res)?.data)
+    }
+
+    pub fn send_chunked_message(&mut self, message: ChunkedMessage, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
+        let body = SendChunkedMessageRequest {
+            message,
+            target_device,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "messages/send",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<SendMessageResponse>(res)?.data)
+    }
+
+    pub fn read_message(&mut self, message_id: &str) -> Result<ReadMessageResult> {
+        let req = self.get_request(
+            "messages/:message_id",
+            Some(&[
+                ("message_id", message_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ReadMessageResponse>(res)?.data)
+    }
+
+    pub fn retrieve_message_container(&mut self, message_id: &str) -> Result<RetrieveMessageContainerResult> {
+        let req = self.get_request(
+            "messages/:message_id/container",
+            Some(&[
+                ("message_id", message_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveMessageContainerResponse>(res)?.data)
+    }
+
+    pub fn retrieve_message_origin(&self, message_id: &str, msg_to_sign: Option<&str>) -> Result<RetrieveMessageOriginResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let mut query_params = None;
+
+        if let Some(msg) = msg_to_sign {
+            params_vec.push(("msgToSign", msg));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "messages/:message_id/origin",
+            Some(&[
+                ("message_id", message_id),
+            ][..]),
+            query_params,
+        )?;
+
+        let res = self.send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveMessageOriginResponse>(res)?.data)
+    }
+
+    pub fn retrieve_message_progress(&mut self, message_id: &str) -> Result<RetrieveMessageProgressResult> {
+        let req = self.get_request(
+            "messages/:message_id/progress",
+            Some(&[
+                ("message_id", message_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveMessageProgressResponse>(res)?.data)
+    }
+
+    pub fn list_messages(&mut self, options: Option<ListMessagesOption>) -> Result<ListMessagesResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let action;
+        let direction;
+        let from_device_ids;
+        let from_device_prod_unique_ids;
+        let to_device_ids;
+        let to_device_prod_unique_ids;
+        let read_state;
+        let start_date;
+        let end_date;
+        let limit;
+        let skip;
+        let mut query_params = None;
+
+        if let Some(opt) = options {
+            if let Some(val) = opt.action {
+                action = val.to_string();
+
+                params_vec.push(("action", action.as_str()));
+            }
+
+            if let Some(val) = opt.direction {
+                direction = val.to_string();
+
+                params_vec.push(("direction", direction.as_str()));
+            }
+
+            {
+                let mut ids = Vec::new();
+                let mut prod_unique_ids = Vec::new();
+
+                if let Some(vec) = opt.from_devices {
+                    for device_id in vec {
+                        if let Some(true) = device_id.is_prod_unique_id {
+                            prod_unique_ids.push(device_id.id);
+                        } else {
+                            ids.push(device_id.id);
+                        }
+                    }
+                }
+
+                if ids.len() > 0 {
+                    from_device_ids = String::from(ids.join(","));
+
+                    params_vec.push(("fromDeviceIds", from_device_ids.as_str()));
+                }
+
+                if prod_unique_ids.len() > 0 {
+                    from_device_prod_unique_ids = String::from(prod_unique_ids.join(","));
+
+                    params_vec.push(("fromDeviceProdUniqueIds", from_device_prod_unique_ids.as_str()));
+                }
+            }
+
+            {
+                let mut ids = Vec::new();
+                let mut prod_unique_ids = Vec::new();
+
+                if let Some(vec) = opt.to_devices {
+                    for device_id in vec {
+                        if let Some(true) = device_id.is_prod_unique_id {
+                            prod_unique_ids.push(device_id.id);
+                        } else {
+                            ids.push(device_id.id);
+                        }
+                    }
+                }
+
+                if ids.len() > 0 {
+                    to_device_ids = String::from(ids.join(","));
+
+                    params_vec.push(("toDeviceIds", to_device_ids.as_str()));
+                }
+
+                if prod_unique_ids.len() > 0 {
+                    to_device_prod_unique_ids = String::from(prod_unique_ids.join(","));
+
+                    params_vec.push(("toDeviceProdUniqueIds", to_device_prod_unique_ids.as_str()));
+                }
+            }
+
+            if let Some(val) = opt.read_state {
+                read_state = val.to_string();
+
+                params_vec.push(("readState", read_state.as_str()));
+            }
+
+            if let Some(val) = opt.start_date {
+                start_date = val.to_string();
+
+                params_vec.push(("startDate", start_date.as_str()));
+            }
+
+            if let Some(val) = opt.end_date {
+                end_date = val.to_string();
+
+                params_vec.push(("endDate", end_date.as_str()));
+            }
+
+            if let Some(val) = opt.limit {
+                limit = val.to_string();
+
+                params_vec.push(("limit", limit.as_str()));
+            }
+
+            if let Some(val) = opt.skip {
+                skip = val.to_string();
+
+                params_vec.push(("skip", skip.as_str()));
+            }
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "messages",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ListMessagesResponse>(res)?.data)
+    }
+
+    pub fn issue_asset(&mut self, asset_info: NewAssetInfo, amount: f64, holding_device: Option<DeviceId>) -> Result<IssueAssetResult> {
+        let body = IssueAssetRequest {
+            asset_info,
+            amount,
+            holding_device
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/issue",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<IssueAssetResponse>(res)?.data)
+    }
+
+    pub fn reissue_asset(&mut self, asset_id: &str, amount: f64, holding_device: Option<DeviceId>) -> Result<ReissueAssetResult> {
+        let body = ReissueAssetRequest {
+            amount,
+            holding_device
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/:asset_id/issue",
+            body_json,
+            Some(&[
+                ("asset_id", asset_id)
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ReissueAssetResponse>(res)?.data)
+    }
+
+    pub fn transfer_asset(&mut self, asset_id: &str, amount: f64, receiving_device: DeviceId) -> Result<TransferAssetResult> {
+        let body = TransferAssetRequest {
+            amount,
+            receiving_device
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/:asset_id/transfer",
+            body_json,
+            Some(&[
+                ("asset_id", asset_id)
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<TransferAssetResponse>(res)?.data)
+    }
+
+    pub fn retrieve_asset_info(&mut self, asset_id: &str) -> Result<RetrieveAssetInfoResult> {
+        let req = self.get_request(
+            "assets/:asset_id",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveAssetInfoResponse>(res)?.data)
+    }
+
+    pub fn get_asset_balance(&mut self, asset_id: &str) -> Result<GetAssetBalanceResult> {
+        let req = self.get_request(
+            "assets/:asset_id/balance",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<GetAssetBalanceResponse>(res)?.data)
+    }
+
+    pub fn list_owned_assets(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListOwnedAssetsResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "assets/owned",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ListOwnedAssetsResponse>(res)?.data)
+    }
+
+    pub fn list_issued_assets(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListIssuedAssetsResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "assets/issued",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ListIssuedAssetsResponse>(res)?.data)
+    }
+
+    pub fn retrieve_asset_issuance_history(
+        &mut self,
+        asset_id: &str,
+        start_date: Option<UtcDateTime>,
+        end_date: Option<UtcDateTime>,
+        limit: Option<u16>,
+        skip: Option<usize>,
+    ) -> Result<RetrieveAssetIssuanceHistoryResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let start_date_str;
+        let end_date_str;
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+        
+        if let Some(val) = start_date {
+            start_date_str = val.to_string();
+
+            params_vec.push(("startDate", start_date_str.as_str()));
+        }
+
+        if let Some(val) = end_date {
+            end_date_str = val.to_string();
+
+            params_vec.push(("endDate", end_date_str.as_str()));
+        }
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "assets/:asset_id/issuance",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveAssetIssuanceHistoryResponse>(res)?.data)
+    }
+
+    pub fn list_asset_holders(&mut self, asset_id: &str, limit: Option<u16>, skip: Option<usize>) -> Result<ListAssetHoldersResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "assets/:asset_id/holders",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ListAssetHoldersResponse>(res)?.data)
+    }
+
+    pub fn list_permission_events(&mut self) -> Result<ListPermissionEventsResult> {
+        let req = self.get_request(
+            "permission/events",
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ListPermissionEventsResponse>(res)?.data)
+    }
+
+    pub fn retrieve_permission_rights(&mut self, event: PermissionEvent) -> Result<RetrievePermissionRightsResult> {
+        let req = self.get_request(
+            "permission/events/:event_name/rights",
+            Some(&[
+                ("event_name", event.to_string().as_str()),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrievePermissionRightsResponse>(res)?.data)
+    }
+
+    pub fn set_permission_rights(&mut self, event: PermissionEvent, rights: AllPermissionRightsUpdate) -> Result<SetPermissionRightsResult> {
+        let body_json = serde_json::to_string(&rights)?;
+        let req = self.post_request(
+            "permission/events/:event_name/rights",
+            body_json,
+            Some(&[
+                ("event_name", event.to_string().as_str()),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<SetPermissionRightsResponse>(res)?.data)
+    }
+
+    pub fn check_effective_permission_right(&mut self, event: PermissionEvent, device: DeviceId) -> Result<CheckEffectivePermissionRightResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let is_prod_unique_id;
+        let mut query_params = None;
+
+        if let Some(val) = device.is_prod_unique_id {
+            is_prod_unique_id = val.to_string();
+
+            params_vec.push(("isProdUniqueId", is_prod_unique_id.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "permission/events/:event_name/rights/:device_id",
+            Some(&[
+                ("event_name", event.to_string().as_str()),
+                ("device_id", device.id.as_str()),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<CheckEffectivePermissionRightResponse>(res)?.data)
+    }
+
+    pub fn retrieve_device_identification_info(&mut self, device: DeviceId) -> Result<RetrieveDeviceIdentificationInfoResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let is_prod_unique_id;
+        let mut query_params = None;
+
+        if let Some(val) = device.is_prod_unique_id {
+            is_prod_unique_id = val.to_string();
+
+            params_vec.push(("isProdUniqueId", is_prod_unique_id.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "devices/:device_id",
+            Some(&[
+                ("device_id", device.id.as_str()),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveDeviceIdentificationInfoResponse>(res)?.data)
+    }
+
+    pub fn list_notification_events(&mut self) -> Result<ListNotificationEventsResult> {
+        let req = self.get_request(
+            "notification/events",
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ListNotificationEventsResponse>(res)?.data)
     }
 
     // Definition of private methods
@@ -850,5 +1471,25 @@ mod tests {
         let notify_channel = ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived);
 
         println!(">>>>>> WS Notify channel: {:?}", notify_channel);
+    }
+
+    #[test]
+    fn it_call_read_message_api_method() {
+        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
+        let device_id = "drc3XdxNtzoucpw9xiRp";
+
+        let mut ctn_client = CatenisClient::new_with_options(
+            api_access_secret,
+            device_id,
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+                ClientOptions::UseCompression(false)
+            ],
+        ).unwrap();
+
+        let result = ctn_client.read_message("orxtXbWS7c7pQCko9ReN");
+
+        println!(">>>>>> Read Message result: {:?}", result);
     }
 }

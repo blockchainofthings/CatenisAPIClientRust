@@ -17,7 +17,7 @@ pub type ListPermissionEventsResult = HashMap<PermissionEvent, String>;
 pub type CheckEffectivePermissionRightResult = HashMap<String, PermissionRight>;
 pub type ListNotificationEventsResult = HashMap<NotificationEvent, String>;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceId {
     pub id: String,
@@ -25,7 +25,7 @@ pub struct DeviceId {
     pub is_prod_unique_id: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
     pub device_id: String,
@@ -33,7 +33,7 @@ pub struct DeviceInfo {
     pub prod_unique_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChunkedMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,7 +44,7 @@ pub struct ChunkedMessage {
     pub continuation_token: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Encoding {
     UTF8,
@@ -52,7 +52,7 @@ pub enum Encoding {
     Hex,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Storage {
     Auto,
@@ -60,7 +60,7 @@ pub enum Storage {
     External,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LogMessageOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,7 +75,7 @@ pub struct LogMessageOptions {
     pub async_: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SendMessageOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,40 +105,40 @@ pub struct ReadMessageOptions {
     pub async_: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum RecordMessageAction {
     Log,
     Send,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageInfo {
     pub action: RecordMessageAction,
     pub from: Option<DeviceInfo>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OffChainContainer {
     pub cid: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainContainer {
     pub txid: String,
     pub confirmed: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct IpfsStorage {
     pub ipfs: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceOwner {
     pub company: Option<String>,
@@ -147,7 +147,7 @@ pub struct DeviceOwner {
     pub domains: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OriginDeviceInfo {
     pub address: String,
@@ -157,7 +157,7 @@ pub struct OriginDeviceInfo {
     pub owned_by: DeviceOwner,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 pub enum TransactionType {
     #[serde(rename = "Send Message")]
     SendMessage,
@@ -167,13 +167,13 @@ pub enum TransactionType {
     SettleOffChainMessage,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchDocRef {
     pub cid: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainTransaction {
     pub txid: String,
@@ -182,7 +182,7 @@ pub struct BlockchainTransaction {
     pub origin_device: Option<OriginDeviceInfo>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 pub enum OffChainMessageType {
     #[serde(rename = "Send Message")]
     SendMessage,
@@ -190,7 +190,7 @@ pub enum OffChainMessageType {
     LogMessage,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OffChainMsgEnvelope {
     pub cid: String,
@@ -198,14 +198,14 @@ pub struct OffChainMsgEnvelope {
     pub origin_device: Option<OffChainOriginDeviceInfo>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ProofInfo {
     pub message: String,
     pub signature: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OffChainOriginDeviceInfo {
     pub pub_key_hash: String,
@@ -215,14 +215,14 @@ pub struct OffChainOriginDeviceInfo {
     pub owned_by: DeviceOwner,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessError {
     pub code: u16,
     pub message: String
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessProgress {
     pub bytes_processed: usize,
@@ -232,14 +232,14 @@ pub struct MessageProcessProgress {
     pub finish_date: Option<UtcDateTime>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessSuccess {
     pub message_id: String,
     pub continuation_token: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageAction {
     Log,
@@ -247,61 +247,78 @@ pub enum MessageAction {
     Read,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Copy, Clone)]
 pub enum MessageActionOption {
     Log,
     Send,
     Any,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "lowercase")]
+impl ToString for MessageActionOption {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            MessageActionOption::Log => "log",
+            MessageActionOption::Send => "send",
+            MessageActionOption::Any => "any",
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub enum MessageDirectionOption {
     Inbound,
     Outbound,
     Any,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "lowercase")]
+impl ToString for MessageDirectionOption {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            MessageDirectionOption::Inbound => "inbound",
+            MessageDirectionOption::Outbound => "outbound",
+            MessageDirectionOption::Any => "any",
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub enum MessageReadStateOption {
     Read,
     Unread,
     Any,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ListMessagesOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
+impl ToString for MessageReadStateOption {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            MessageReadStateOption::Read => "read",
+            MessageReadStateOption::Unread => "unread",
+            MessageReadStateOption::Any => "any",
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ListMessagesOption {
     pub action: Option<MessageActionOption>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub direction: Option<MessageDirectionOption>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub from_devices: Option<Vec<DeviceId>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_devices: Option<Vec<DeviceId>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub read_state: Option<MessageReadStateOption>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub start_date: Option<UtcDateTime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub end_date: Option<UtcDateTime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub skip: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageDirection {
     Inbound,
     Outbound,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageEntry {
     pub message_id: String,
@@ -314,7 +331,7 @@ pub struct MessageEntry {
     pub date: UtcDateTime,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NewAssetInfo {
     pub name: String,
@@ -324,28 +341,28 @@ pub struct NewAssetInfo {
     pub decimal_places: u8
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalance {
     pub total: f64,
     pub unconfirmed: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnedAssetEntry {
     pub asset_id: String,
     pub balance: AssetBalance,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct IssuedAssetEntry {
     pub asset_id: String,
     pub total_existent_balance: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetIssuanceEventEntry {
     pub amount: f64,
@@ -353,14 +370,14 @@ pub struct AssetIssuanceEventEntry {
 
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetHolderEntry {
     pub holder: DeviceInfo,
     pub balance: AssetBalance,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum PermissionEvent {
     ReceiveNotifyNewMsg,
     ReceiveNotifyMsgRead,
@@ -444,21 +461,21 @@ impl Into<PermissionEvent> for &str {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum PermissionRight {
     Allow,
     Deny,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionRightsSetting {
     pub allow: Option<Vec<String>>,
     pub deny: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DevicePermissionRightsSetting {
     pub allow: Option<Vec<DeviceInfo>>,
@@ -500,7 +517,7 @@ pub struct AllPermissionRightsUpdate {
     pub device: Option<DevicePermissionRightsUpdate>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CatenisNodeInfo {
     pub ctn_node_idx: u32,
@@ -508,14 +525,14 @@ pub struct CatenisNodeInfo {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientInfo {
     pub client_id: String,
     pub name: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum NotificationEvent {
     NewMsgReceived,
     SentMsgRead,
@@ -580,7 +597,7 @@ impl Into<NotificationEvent> for &str {
 
 // Result (used in response) data structures
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LogMessageResult {
     pub continuation_token: Option<String>,
@@ -588,7 +605,7 @@ pub struct LogMessageResult {
     pub provisional_message_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SendMessageResult {
     pub continuation_token: Option<String>,
@@ -596,7 +613,7 @@ pub struct SendMessageResult {
     pub provisional_message_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadMessageResult {
     pub msg_info: Option<MessageInfo>,
@@ -605,7 +622,7 @@ pub struct ReadMessageResult {
     pub cached_message_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveMessageContainerResult {
     pub off_chain: Option<OffChainContainer>,
@@ -621,7 +638,7 @@ pub struct RetrieveMessageOriginResult {
     pub proof: ProofInfo,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveMessageProgressResult {
     pub action: MessageAction,
@@ -629,7 +646,7 @@ pub struct RetrieveMessageProgressResult {
     pub result: Option<MessageProcessSuccess>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ListMessagesResult {
     pub messages: Vec<MessageEntry>,
@@ -637,13 +654,13 @@ pub struct ListMessagesResult {
     pub has_more: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueAssetResult {
     pub asset_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ReissueAssetResult {
     pub total_existent_balance: f64,
@@ -655,7 +672,7 @@ pub struct TransferAssetResult {
     pub remaining_balance: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveAssetInfoResult {
     pub asset_id: String,
@@ -667,42 +684,42 @@ pub struct RetrieveAssetInfoResult {
     pub total_existent_balance: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GetAssetBalanceResult {
     pub total: f64,
     pub unconfirmed: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ListOwnedAssetsResult {
     pub owned_assets: Vec<OwnedAssetEntry>,
     pub has_more: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ListIssuedAssetsResult {
     pub issued_assets: Vec<IssuedAssetEntry>,
     pub has_more: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveAssetIssuanceHistoryResult {
     pub issuance_events: Vec<AssetIssuanceEventEntry>,
     pub has_more: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAssetHoldersResult {
     pub asset_holders: Vec<AssetHolderEntry>,
     pub has_more: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrievePermissionRightsResult {
     pub system: PermissionRight,
@@ -711,13 +728,13 @@ pub struct RetrievePermissionRightsResult {
     pub device: Option<DevicePermissionRightsSetting>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SetPermissionRightsResult {
     pub success: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveDeviceIdentificationInfoResult {
     pub catenis_node: CatenisNodeInfo,
@@ -789,154 +806,154 @@ pub(crate) struct TransferAssetRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LogMessageResponse {
+pub(crate) struct LogMessageResponse {
     pub status: String,
     pub data: LogMessageResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SendMessageResponse {
+pub(crate) struct SendMessageResponse {
     pub status: String,
     pub data: SendMessageResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReadMessageResponse {
+pub(crate) struct ReadMessageResponse {
     pub status: String,
     pub data: ReadMessageResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetrieveMessageContainerResponse {
+pub(crate) struct RetrieveMessageContainerResponse {
     pub status: String,
     pub data: RetrieveMessageContainerResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetrieveMessageOriginResponse {
+pub(crate) struct RetrieveMessageOriginResponse {
     pub status: String,
     pub data: RetrieveMessageOriginResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetrieveMessageProgressResponse {
+pub(crate) struct RetrieveMessageProgressResponse {
     pub status: String,
     pub data: RetrieveMessageProgressResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListMessagesResponse {
+pub(crate) struct ListMessagesResponse {
     pub status: String,
     pub data: ListMessagesResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct IssueAssetResponse {
+pub(crate) struct IssueAssetResponse {
     pub status: String,
     pub data: IssueAssetResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReissueAssetResponse {
+pub(crate) struct ReissueAssetResponse {
     pub status: String,
     pub data: ReissueAssetResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TransferAssetResponse {
+pub(crate) struct TransferAssetResponse {
     pub status: String,
     pub data: TransferAssetResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetrieveAssetInfoResponse {
+pub(crate) struct RetrieveAssetInfoResponse {
     pub status: String,
     pub data: RetrieveAssetInfoResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetAssetBalanceResponse {
+pub(crate) struct GetAssetBalanceResponse {
     pub status: String,
     pub data: GetAssetBalanceResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListOwnedAssetsResponse {
+pub(crate) struct ListOwnedAssetsResponse {
     pub status: String,
     pub data: ListOwnedAssetsResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListIssuedAssetsResponse {
+pub(crate) struct ListIssuedAssetsResponse {
     pub status: String,
     pub data: ListIssuedAssetsResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetrieveAssetIssuanceHistoryResponse {
+pub(crate) struct RetrieveAssetIssuanceHistoryResponse {
     pub status: String,
     pub data: RetrieveAssetIssuanceHistoryResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListAssetHoldersResponse {
+pub(crate) struct ListAssetHoldersResponse {
     pub status: String,
     pub data: ListAssetHoldersResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListPermissionEventsResponse {
+pub(crate) struct ListPermissionEventsResponse {
     pub status: String,
     pub data: ListPermissionEventsResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetrievePermissionRightsResponse {
+pub(crate) struct RetrievePermissionRightsResponse {
     pub status: String,
     pub data: RetrievePermissionRightsResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SetPermissionRightsResponse {
+pub(crate) struct SetPermissionRightsResponse {
     pub status: String,
     pub data: SetPermissionRightsResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CheckEffectivePermissionRightResponse {
+pub(crate) struct CheckEffectivePermissionRightResponse {
     pub status: String,
     pub data: CheckEffectivePermissionRightResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetrieveDeviceIdentificationInfoResponse {
+pub(crate) struct RetrieveDeviceIdentificationInfoResponse {
     pub status: String,
     pub data: RetrieveDeviceIdentificationInfoResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListNotificationEventsResponse {
+pub(crate) struct ListNotificationEventsResponse {
     pub status: String,
     pub data: ListNotificationEventsResult,
 }

@@ -140,11 +140,630 @@ impl CatenisClient {
             options
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async("messages/log", body_json, None::<KVList>, None::<KVList>).await?;
+        let req = self.post_request_async(
+            "messages/log",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        ).await?;
 
         let res = self.sign_and_send_request_async(req).await?;
 
         Ok(Self::parse_response_async::<LogMessageResponse>(res).await?.data)
+    }
+
+    pub async fn log_chunked_message_async(&mut self, message: ChunkedMessage, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
+        let body = LogChunkedMessageRequest {
+            message,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request_async(
+            "messages/log",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<LogMessageResponse>(res).await?.data)
+    }
+
+    pub async fn send_message_async(&mut self, message: &str, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
+        let body = SendMessageRequest {
+            message: String::from(message),
+            target_device,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request_async(
+            "messages/send",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<SendMessageResponse>(res).await?.data)
+    }
+
+    pub async fn send_chunked_message_async(&mut self, message: ChunkedMessage, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
+        let body = SendChunkedMessageRequest {
+            message,
+            target_device,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request_async(
+            "messages/send",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<SendMessageResponse>(res).await?.data)
+    }
+
+    pub async fn read_message_async(&mut self, message_id: &str) -> Result<ReadMessageResult> {
+        let req = self.get_request_async(
+            "messages/:message_id",
+            Some(&[
+                ("message_id", message_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ReadMessageResponse>(res).await?.data)
+    }
+
+    pub async fn retrieve_message_container_async(&mut self, message_id: &str) -> Result<RetrieveMessageContainerResult> {
+        let req = self.get_request_async(
+            "messages/:message_id/container",
+            Some(&[
+                ("message_id", message_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<RetrieveMessageContainerResponse>(res).await?.data)
+    }
+
+    pub async fn retrieve_message_origin_async(&self, message_id: &str, msg_to_sign: Option<&str>) -> Result<RetrieveMessageOriginResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let mut query_params = None;
+
+        if let Some(msg) = msg_to_sign {
+            params_vec.push(("msgToSign", msg));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "messages/:message_id/origin",
+            Some(&[
+                ("message_id", message_id),
+            ][..]),
+            query_params,
+        )?;
+
+        let res = self.send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<RetrieveMessageOriginResponse>(res).await?.data)
+    }
+
+    pub async fn retrieve_message_progress_async(&mut self, message_id: &str) -> Result<RetrieveMessageProgressResult> {
+        let req = self.get_request_async(
+            "messages/:message_id/progress",
+            Some(&[
+                ("message_id", message_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<RetrieveMessageProgressResponse>(res).await?.data)
+    }
+
+    pub async fn list_messages_async(&mut self, options: Option<ListMessagesOption>) -> Result<ListMessagesResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let action;
+        let direction;
+        let from_device_ids;
+        let from_device_prod_unique_ids;
+        let to_device_ids;
+        let to_device_prod_unique_ids;
+        let read_state;
+        let start_date;
+        let end_date;
+        let limit;
+        let skip;
+        let mut query_params = None;
+
+        if let Some(opt) = options {
+            if let Some(val) = opt.action {
+                action = val.to_string();
+
+                params_vec.push(("action", action.as_str()));
+            }
+
+            if let Some(val) = opt.direction {
+                direction = val.to_string();
+
+                params_vec.push(("direction", direction.as_str()));
+            }
+
+            {
+                let mut ids = Vec::new();
+                let mut prod_unique_ids = Vec::new();
+
+                if let Some(vec) = opt.from_devices {
+                    for device_id in vec {
+                        if let Some(true) = device_id.is_prod_unique_id {
+                            prod_unique_ids.push(device_id.id);
+                        } else {
+                            ids.push(device_id.id);
+                        }
+                    }
+                }
+
+                if ids.len() > 0 {
+                    from_device_ids = String::from(ids.join(","));
+
+                    params_vec.push(("fromDeviceIds", from_device_ids.as_str()));
+                }
+
+                if prod_unique_ids.len() > 0 {
+                    from_device_prod_unique_ids = String::from(prod_unique_ids.join(","));
+
+                    params_vec.push(("fromDeviceProdUniqueIds", from_device_prod_unique_ids.as_str()));
+                }
+            }
+
+            {
+                let mut ids = Vec::new();
+                let mut prod_unique_ids = Vec::new();
+
+                if let Some(vec) = opt.to_devices {
+                    for device_id in vec {
+                        if let Some(true) = device_id.is_prod_unique_id {
+                            prod_unique_ids.push(device_id.id);
+                        } else {
+                            ids.push(device_id.id);
+                        }
+                    }
+                }
+
+                if ids.len() > 0 {
+                    to_device_ids = String::from(ids.join(","));
+
+                    params_vec.push(("toDeviceIds", to_device_ids.as_str()));
+                }
+
+                if prod_unique_ids.len() > 0 {
+                    to_device_prod_unique_ids = String::from(prod_unique_ids.join(","));
+
+                    params_vec.push(("toDeviceProdUniqueIds", to_device_prod_unique_ids.as_str()));
+                }
+            }
+
+            if let Some(val) = opt.read_state {
+                read_state = val.to_string();
+
+                params_vec.push(("readState", read_state.as_str()));
+            }
+
+            if let Some(val) = opt.start_date {
+                start_date = val.to_string();
+
+                params_vec.push(("startDate", start_date.as_str()));
+            }
+
+            if let Some(val) = opt.end_date {
+                end_date = val.to_string();
+
+                params_vec.push(("endDate", end_date.as_str()));
+            }
+
+            if let Some(val) = opt.limit {
+                limit = val.to_string();
+
+                params_vec.push(("limit", limit.as_str()));
+            }
+
+            if let Some(val) = opt.skip {
+                skip = val.to_string();
+
+                params_vec.push(("skip", skip.as_str()));
+            }
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "messages",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ListMessagesResponse>(res).await?.data)
+    }
+
+    pub async fn issue_asset_async(&mut self, asset_info: NewAssetInfo, amount: f64, holding_device: Option<DeviceId>) -> Result<IssueAssetResult> {
+        let body = IssueAssetRequest {
+            asset_info,
+            amount,
+            holding_device
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request_async(
+            "assets/issue",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<IssueAssetResponse>(res).await?.data)
+    }
+
+    pub async fn reissue_asset_async(&mut self, asset_id: &str, amount: f64, holding_device: Option<DeviceId>) -> Result<ReissueAssetResult> {
+        let body = ReissueAssetRequest {
+            amount,
+            holding_device
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request_async(
+            "assets/:asset_id/issue",
+            body_json,
+            Some(&[
+                ("asset_id", asset_id)
+            ]),
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ReissueAssetResponse>(res).await?.data)
+    }
+
+    pub async fn transfer_asset_async(&mut self, asset_id: &str, amount: f64, receiving_device: DeviceId) -> Result<TransferAssetResult> {
+        let body = TransferAssetRequest {
+            amount,
+            receiving_device
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request_async(
+            "assets/:asset_id/transfer",
+            body_json,
+            Some(&[
+                ("asset_id", asset_id)
+            ]),
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<TransferAssetResponse>(res).await?.data)
+    }
+
+    pub async fn retrieve_asset_info_async(&mut self, asset_id: &str) -> Result<RetrieveAssetInfoResult> {
+        let req = self.get_request_async(
+            "assets/:asset_id",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<RetrieveAssetInfoResponse>(res).await?.data)
+    }
+
+    pub async fn get_asset_balance_async(&mut self, asset_id: &str) -> Result<GetAssetBalanceResult> {
+        let req = self.get_request_async(
+            "assets/:asset_id/balance",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<GetAssetBalanceResponse>(res).await?.data)
+    }
+
+    pub async fn list_owned_assets_async(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListOwnedAssetsResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "assets/owned",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ListOwnedAssetsResponse>(res).await?.data)
+    }
+
+    pub async fn list_issued_assets_async(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListIssuedAssetsResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "assets/issued",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ListIssuedAssetsResponse>(res).await?.data)
+    }
+
+    pub async fn retrieve_asset_issuance_history_async(
+        &mut self,
+        asset_id: &str,
+        start_date: Option<UtcDateTime>,
+        end_date: Option<UtcDateTime>,
+        limit: Option<u16>,
+        skip: Option<usize>,
+    ) -> Result<RetrieveAssetIssuanceHistoryResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let start_date_str;
+        let end_date_str;
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+
+        if let Some(val) = start_date {
+            start_date_str = val.to_string();
+
+            params_vec.push(("startDate", start_date_str.as_str()));
+        }
+
+        if let Some(val) = end_date {
+            end_date_str = val.to_string();
+
+            params_vec.push(("endDate", end_date_str.as_str()));
+        }
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "assets/:asset_id/issuance",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<RetrieveAssetIssuanceHistoryResponse>(res).await?.data)
+    }
+
+    pub async fn list_asset_holders_async(&mut self, asset_id: &str, limit: Option<u16>, skip: Option<usize>) -> Result<ListAssetHoldersResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let limit_str;
+        let skip_str;
+        let mut query_params = None;
+
+        if let Some(val) = limit {
+            limit_str = val.to_string();
+
+            params_vec.push(("limit", limit_str.as_str()));
+        }
+
+        if let Some(val) = skip {
+            skip_str = val.to_string();
+
+            params_vec.push(("skip", skip_str.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "assets/:asset_id/holders",
+            Some(&[
+                ("asset_id", asset_id),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ListAssetHoldersResponse>(res).await?.data)
+    }
+
+    pub async fn list_permission_events_async(&mut self) -> Result<ListPermissionEventsResult> {
+        let req = self.get_request_async(
+            "permission/events",
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ListPermissionEventsResponse>(res).await?.data)
+    }
+
+    pub async fn retrieve_permission_rights_async(&mut self, event: PermissionEvent) -> Result<RetrievePermissionRightsResult> {
+        let req = self.get_request_async(
+            "permission/events/:event_name/rights",
+            Some(&[
+                ("event_name", event.to_string().as_str()),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<RetrievePermissionRightsResponse>(res).await?.data)
+    }
+
+    pub async fn set_permission_rights_async(&mut self, event: PermissionEvent, rights: AllPermissionRightsUpdate) -> Result<SetPermissionRightsResult> {
+        let body_json = serde_json::to_string(&rights)?;
+        let req = self.post_request_async(
+            "permission/events/:event_name/rights",
+            body_json,
+            Some(&[
+                ("event_name", event.to_string().as_str()),
+            ]),
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<SetPermissionRightsResponse>(res).await?.data)
+    }
+
+    pub async fn check_effective_permission_right_async(&mut self, event: PermissionEvent, device: DeviceId) -> Result<CheckEffectivePermissionRightResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let is_prod_unique_id;
+        let mut query_params = None;
+
+        if let Some(val) = device.is_prod_unique_id {
+            is_prod_unique_id = val.to_string();
+
+            params_vec.push(("isProdUniqueId", is_prod_unique_id.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "permission/events/:event_name/rights/:device_id",
+            Some(&[
+                ("event_name", event.to_string().as_str()),
+                ("device_id", device.id.as_str()),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<CheckEffectivePermissionRightResponse>(res).await?.data)
+    }
+
+    pub async fn retrieve_device_identification_info_async(&mut self, device: DeviceId) -> Result<RetrieveDeviceIdentificationInfoResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let is_prod_unique_id;
+        let mut query_params = None;
+
+        if let Some(val) = device.is_prod_unique_id {
+            is_prod_unique_id = val.to_string();
+
+            params_vec.push(("isProdUniqueId", is_prod_unique_id.as_str()));
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request_async(
+            "devices/:device_id",
+            Some(&[
+                ("device_id", device.id.as_str()),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<RetrieveDeviceIdentificationInfoResponse>(res).await?.data)
+    }
+
+    pub async fn list_notification_events_async(&mut self) -> Result<ListNotificationEventsResult> {
+        let req = self.get_request_async(
+            "notification/events",
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request_async(req).await?;
+
+        Ok(Self::parse_response_async::<ListNotificationEventsResponse>(res).await?.data)
     }
 
     // Definition of private methods
