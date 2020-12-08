@@ -47,7 +47,7 @@ fn format_iso_date(date: OffsetDateTime) -> String {
     date.format("%Y-%m-%dT%H:%M:%S") + &format!(".{:0>3}Z", date.millisecond())
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct UtcDateTime {
     inner: OffsetDateTime
 }
