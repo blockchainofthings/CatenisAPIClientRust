@@ -13,7 +13,7 @@ mod ws;
 
 pub use ws::*;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessProgressDone {
     pub bytes_processed: usize,
@@ -25,17 +25,7 @@ pub struct MessageProcessProgressDone {
 
 // Notification messages
 
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum NotificationMessage {
-    NewMessageReceived(NewMessageReceivedNotify),
-    SentMessageRead(SentMessageReadNotify),
-    AssetReceived(AssetReceivedNotify),
-    AssetConfirmed(AssetConfirmedNotify),
-    FinalMessageProgress(FinalMessageProgressNotify),
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NewMessageReceivedNotify {
     pub message_id: String,
@@ -43,7 +33,7 @@ pub struct NewMessageReceivedNotify {
     pub received_date: UtcDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SentMessageReadNotify {
     pub message_id: String,
@@ -51,7 +41,7 @@ pub struct SentMessageReadNotify {
     pub read_date: UtcDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetReceivedNotify {
     pub asset_id: String,
@@ -61,7 +51,7 @@ pub struct AssetReceivedNotify {
     pub received_date: UtcDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetConfirmedNotify {
     pub asset_id: String,
@@ -71,13 +61,23 @@ pub struct AssetConfirmedNotify {
     pub confirmed_date: UtcDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalMessageProgressNotify {
     pub ephemeral_message_id: String,
     pub action: MessageAction,
     pub progress: MessageProcessProgressDone,
     pub result: Option<MessageProcessSuccess>,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum NotificationMessage {
+    NewMessageReceived(NewMessageReceivedNotify),
+    SentMessageRead(SentMessageReadNotify),
+    AssetReceived(AssetReceivedNotify),
+    AssetConfirmed(AssetConfirmedNotify),
+    FinalMessageProgress(FinalMessageProgressNotify),
 }
 
 #[cfg(test)]
