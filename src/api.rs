@@ -386,7 +386,7 @@ pub struct AssetHolderEntry {
     pub balance: AssetBalance,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PermissionEvent {
     ReceiveNotifyNewMsg,
     ReceiveNotifyMsgRead,
@@ -445,7 +445,7 @@ impl ToString for PermissionEvent {
             PermissionEvent::DiscloseIdentityInfo => "disclose-identity-info",
             PermissionEvent::ReceiveAssetOf => "receive-asset-of",
             PermissionEvent::ReceiveAssetFrom => "receive-asset-from",
-            PermissionEvent::UnknownEvent(s) => s.as_str()
+            PermissionEvent::UnknownEvent(s) => s.as_str(),
         })
     }
 }
@@ -541,14 +541,14 @@ pub struct ClientInfo {
     pub name: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NotificationEvent {
     NewMsgReceived,
     SentMsgRead,
     AssetReceived,
     AssetConfirmed,
-    FinalMessageProgress,
-    InvalidEvent,
+    FinalMsgProgress,
+    UnknownEvent(String),
 }
 
 impl<'de> Deserialize<'de> for NotificationEvent {
@@ -585,8 +585,8 @@ impl ToString for NotificationEvent {
             NotificationEvent::SentMsgRead => "sent-msg-read",
             NotificationEvent::AssetReceived => "asset-received",
             NotificationEvent::AssetConfirmed => "asset-confirmed",
-            NotificationEvent::FinalMessageProgress => "final-msg-progress",
-            NotificationEvent::InvalidEvent => "invalid-event",
+            NotificationEvent::FinalMsgProgress => "final-msg-progress",
+            NotificationEvent::UnknownEvent(s) => s.as_str(),
         })
     }
 }
@@ -598,8 +598,8 @@ impl Into<NotificationEvent> for &str {
             "sent-msg-read" => NotificationEvent::SentMsgRead,
             "asset-received" => NotificationEvent::AssetReceived,
             "asset-confirmed" => NotificationEvent::AssetConfirmed,
-            "final-msg-progress" => NotificationEvent::FinalMessageProgress,
-            _ => NotificationEvent::InvalidEvent,
+            "final-msg-progress" => NotificationEvent::FinalMsgProgress,
+            s @ _ => NotificationEvent::UnknownEvent(String::from(s)),
         }
     }
 }
@@ -627,7 +627,7 @@ pub struct SendMessageResult {
 pub struct ReadMessageResult {
     pub msg_info: Option<MessageInfo>,
     pub msg_data: Option<String>,
-    pub continuation_toke: Option<String>,
+    pub continuation_token: Option<String>,
     pub cached_message_id: Option<String>,
 }
 
@@ -753,7 +753,7 @@ pub struct RetrieveDeviceIdentificationInfoResult {
 
 // Request data structures
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LogMessageRequest {
     pub message: String,
@@ -761,7 +761,7 @@ pub(crate) struct LogMessageRequest {
     pub options: Option<LogMessageOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LogChunkedMessageRequest {
     pub message: ChunkedMessage,
@@ -769,7 +769,7 @@ pub(crate) struct LogChunkedMessageRequest {
     pub options: Option<LogMessageOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SendMessageRequest {
     pub message: String,
@@ -778,7 +778,7 @@ pub(crate) struct SendMessageRequest {
     pub options: Option<SendMessageOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SendChunkedMessageRequest {
     pub message: ChunkedMessage,
@@ -787,7 +787,7 @@ pub(crate) struct SendChunkedMessageRequest {
     pub options: Option<SendMessageOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct IssueAssetRequest {
     pub asset_info: NewAssetInfo,
@@ -796,7 +796,7 @@ pub(crate) struct IssueAssetRequest {
     pub holding_device: Option<DeviceId>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ReissueAssetRequest {
     pub amount: f64,
@@ -804,7 +804,7 @@ pub(crate) struct ReissueAssetRequest {
     pub holding_device: Option<DeviceId>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TransferAssetRequest {
     pub amount: f64,
@@ -813,154 +813,154 @@ pub(crate) struct TransferAssetRequest {
 
 // Response data structures
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LogMessageResponse {
     pub status: String,
     pub data: LogMessageResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SendMessageResponse {
     pub status: String,
     pub data: SendMessageResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ReadMessageResponse {
     pub status: String,
     pub data: ReadMessageResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RetrieveMessageContainerResponse {
     pub status: String,
     pub data: RetrieveMessageContainerResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RetrieveMessageOriginResponse {
     pub status: String,
     pub data: RetrieveMessageOriginResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RetrieveMessageProgressResponse {
     pub status: String,
     pub data: RetrieveMessageProgressResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListMessagesResponse {
     pub status: String,
     pub data: ListMessagesResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct IssueAssetResponse {
     pub status: String,
     pub data: IssueAssetResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ReissueAssetResponse {
     pub status: String,
     pub data: ReissueAssetResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TransferAssetResponse {
     pub status: String,
     pub data: TransferAssetResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RetrieveAssetInfoResponse {
     pub status: String,
     pub data: RetrieveAssetInfoResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GetAssetBalanceResponse {
     pub status: String,
     pub data: GetAssetBalanceResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListOwnedAssetsResponse {
     pub status: String,
     pub data: ListOwnedAssetsResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListIssuedAssetsResponse {
     pub status: String,
     pub data: ListIssuedAssetsResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RetrieveAssetIssuanceHistoryResponse {
     pub status: String,
     pub data: RetrieveAssetIssuanceHistoryResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListAssetHoldersResponse {
     pub status: String,
     pub data: ListAssetHoldersResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListPermissionEventsResponse {
     pub status: String,
     pub data: ListPermissionEventsResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RetrievePermissionRightsResponse {
     pub status: String,
     pub data: RetrievePermissionRightsResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SetPermissionRightsResponse {
     pub status: String,
     pub data: SetPermissionRightsResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CheckEffectivePermissionRightResponse {
     pub status: String,
     pub data: CheckEffectivePermissionRightResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RetrieveDeviceIdentificationInfoResponse {
     pub status: String,
     pub data: RetrieveDeviceIdentificationInfoResult,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListNotificationEventsResponse {
     pub status: String,
