@@ -27,6 +27,7 @@ use time::{
 use serde::de::DeserializeOwned;
 
 use crate::*;
+use crate::api::*;
 use base_client::BaseCatenisClient;
 use super::notification::WsNotifyChannel;
 

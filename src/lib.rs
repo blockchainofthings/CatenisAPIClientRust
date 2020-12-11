@@ -9,8 +9,8 @@ mod base_client;
 mod client;
 mod error;
 mod date_time;
-mod api;
-mod notification;
+pub mod api;
+pub mod notification;
 #[cfg(feature = "async")]
 pub mod async_impl;
 
@@ -21,8 +21,7 @@ pub use error::{
     Error, Result,
 };
 pub use date_time::UtcDateTime;
-pub use api::*;
-pub use notification::*;
+pub use notification::WsNotifyChannel;
 
 pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
