@@ -72,6 +72,7 @@ pub(crate) enum NotifyEventHandlerMessage {
     NotifyEvent(WsNotifyChannelEvent),
 }
 
+#[derive(Debug)]
 pub enum WsNotifyChannelEvent {
     Error(Error),
     Close(Option<CloseFrame<'static>>),
@@ -461,45 +462,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_serialize_ws_auth() {
-        let st = WsNotifyChannelAuthentication {
-            x_bcot_timestamp: String::from("YYYY-MM-ddTHH:mm:ssZ"),
-            authorization: String::from("blablabla"),
+    fn it_serialize_ws_notify_channel_authentication() {
+        let ws_notify_channel_authentication = WsNotifyChannelAuthentication {
+            x_bcot_timestamp: String::from("20201210T203848Z"),
+            authorization: String::from("CTN1-HMAC-SHA256 Credential=drc3XdxNtzoucpw9xiRp/20201210/ctn1_request, Signature=7c8a878788b0bf6ddcc38f47a590ed6b261cb18a0261fefb42f9db1ee2fcb866"),
         };
 
-        let json = serde_json::to_string(&st).unwrap();
+        let json = serde_json::to_string(&ws_notify_channel_authentication).unwrap();
 
-        println!(">>>>>> WebSocket notification channel authentication json: {}", json);
+        assert_eq!(json, r#"{"x-bcot-timestamp":"20201210T203848Z","authorization":"CTN1-HMAC-SHA256 Credential=drc3XdxNtzoucpw9xiRp/20201210/ctn1_request, Signature=7c8a878788b0bf6ddcc38f47a590ed6b261cb18a0261fefb42f9db1ee2fcb866"}"#);
     }
 
     #[test]
-    fn it_deserialize_notify_msg() {
-        let msg = r#"{
-            "messageId": "mjfaklreuiewjkd",
-            "to": {
-              "deviceId": "dreuwnvnvlshfhsa"
-            },
-            "readDate": "2020-11-26T15:35:00Z"
-        }"#;
-
-        let notify_msg: NotificationMessage = serde_json::from_str(msg).unwrap();
-
-        println!(">>>>>> Deserialized notification message: {:?}", notify_msg);
-    }
-
-    #[test]
-    fn it_format_vector() {
-        let v: Vec<u8> = vec![0x01, 0x02, 0x03];
-
-        /*let txt = format!("{:?}", &v);
-        let txt = String::from(&txt[..txt.len()-1]);*/
-        let txt = format_vec_limit(v, 2);
-
-        println!(">>>>>> Formatted vector: {}", txt);
-    }
-
-    #[test]
-    fn it_opens_ws_notify_channel() {
+    fn it_process_ws_notify_channel_events() {
         use std::sync::{Arc, Mutex};
         use crate::*;
 

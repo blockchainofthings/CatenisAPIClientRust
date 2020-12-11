@@ -394,7 +394,7 @@ impl AsyncWsNotifyChannel {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
-    async fn it_opens_async_ws_notify_channel() {
+    async fn it_process_ws_notify_channel_events() {
         use std::sync::{Arc, Mutex};
         use crate::*;
 
