@@ -1,3 +1,3 @@
 mod ws;
 
-pub use ws::*;
+pub use ws::WsNotifyChannel;

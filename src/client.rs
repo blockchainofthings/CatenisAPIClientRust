@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    io::Read,
 };
 use bitcoin_hashes::{
     Hash, HashEngine, hex::ToHex, Hmac,
@@ -7,31 +8,66 @@ use bitcoin_hashes::{
     sha256,
 };
 use reqwest::{
-    Client as HttpClient,
-    ClientBuilder as HttpClientBuilder,
-    Request, Response,
+    blocking::{
+        Client as HttpClient,
+        ClientBuilder as HttpClientBuilder,
+        Request, Response
+    },
     header::{
         ACCEPT_ENCODING, AUTHORIZATION, CONTENT_TYPE, CONTENT_ENCODING,
         HeaderMap, HeaderName, HeaderValue, HOST,
     },
     Url,
 };
-use async_compression::{
-    Level,
-    tokio_02::bufread::DeflateEncoder
+use flate2::{
+    Compression,
+    bufread::{
+        DeflateEncoder,
+    }
 };
-use tokio::io::AsyncReadExt;
 use time::{
-    OffsetDateTime,
+    OffsetDateTime, Date,
 };
 use serde::de::DeserializeOwned;
+
 use crate::*;
-use super::notification::AsyncWsNotifyChannel;
+use base_client::BaseCatenisClient;
+
+#[derive(Debug, Clone)]
+pub struct CatenisClient {
+    api_access_secret: String,
+    device_id: String,
+    base_api_url: Url,
+    is_secure: bool,
+    use_compression: bool,
+    compress_threshold: usize,
+    sign_date: Option<Date>,
+    signing_key: Option<[u8; 32]>,
+    http_client: Option<HttpClient>,
+}
+
+impl BaseCatenisClient for CatenisClient {
+    fn get_api_access_secret_ref(&self) -> &String {
+        &self.api_access_secret
+    }
+
+    fn get_sign_date_ref(&self) -> &Option<Date> {
+        &self.sign_date
+    }
+
+    fn get_sign_date_mut_ref(&mut self) -> &mut Option<Date> {
+        &mut self.sign_date
+    }
+
+    fn get_signing_key_mut_ref(&mut self) -> &mut Option<[u8; 32]> {
+        &mut self.signing_key
+    }
+}
 
 impl CatenisClient {
     // Definition of public methods
 
-    pub fn new_async(api_access_secret: &str, device_id: &str) -> Result<Self>
+    pub fn new(api_access_secret: &str, device_id: &str) -> Result<Self>
     {
         let base_url = Url::parse(DEFAULT_BASE_URL)?;
         let api_version = DEFAULT_API_VERSION;
@@ -48,12 +84,11 @@ impl CatenisClient {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: None,
-            http_client_async: Some(Self::new_http_client_async(use_compression)?),
+            http_client: Some(Self::new_http_client(use_compression)?),
         })
     }
 
-    pub fn new_async_with_options<'a, I>(api_access_secret: &str, device_id: &str, opts: I) -> Result<Self>
+    pub fn new_with_options<'a, I>(api_access_secret: &str, device_id: &str, opts: I) -> Result<Self>
         where
             I: IntoIterator,
             <I as IntoIterator>::Item: Borrow<ClientOptions<'a>>
@@ -125,90 +160,89 @@ impl CatenisClient {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: None,
-            http_client_async: Some(Self::new_http_client_async(use_compression)?),
+            http_client: Some(Self::new_http_client(use_compression)?),
         })
     }
 
-    pub fn new_async_ws_notify_channel(&self, notify_event: NotificationEvent) -> AsyncWsNotifyChannel {
-        AsyncWsNotifyChannel::new(self, notify_event)
+    pub fn new_ws_notify_channel(&self, notify_event: NotificationEvent) -> WsNotifyChannel {
+        WsNotifyChannel::new(self, notify_event)
     }
 
-    pub async fn log_message_async(&mut self, message: &str, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
+    pub fn log_message(&mut self, message: &str, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
         let body = LogMessageRequest {
             message: String::from(message),
             options
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "messages/log",
             body_json,
             None::<KVList>,
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<LogMessageResponse>(res).await?.data)
+        Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
     }
 
-    pub async fn log_chunked_message_async(&mut self, message: ChunkedMessage, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
+    pub fn log_chunked_message(&mut self, message: ChunkedMessage, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
         let body = LogChunkedMessageRequest {
             message,
             options
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "messages/log",
             body_json,
             None::<KVList>,
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<LogMessageResponse>(res).await?.data)
+        Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
     }
 
-    pub async fn send_message_async(&mut self, message: &str, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
+    pub fn send_message(&mut self, message: &str, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
         let body = SendMessageRequest {
             message: String::from(message),
             target_device,
             options
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "messages/send",
             body_json,
             None::<KVList>,
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<SendMessageResponse>(res).await?.data)
+        Ok(Self::parse_response::<SendMessageResponse>(res)?.data)
     }
 
-    pub async fn send_chunked_message_async(&mut self, message: ChunkedMessage, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
+    pub fn send_chunked_message(&mut self, message: ChunkedMessage, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
         let body = SendChunkedMessageRequest {
             message,
             target_device,
             options
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "messages/send",
             body_json,
             None::<KVList>,
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<SendMessageResponse>(res).await?.data)
+        Ok(Self::parse_response::<SendMessageResponse>(res)?.data)
     }
 
-    pub async fn read_message_async(&mut self, message_id: &str, options: Option<ReadMessageOptions>) -> Result<ReadMessageResult> {
+    pub fn read_message(&mut self, message_id: &str, options: Option<ReadMessageOptions>) -> Result<ReadMessageResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let encoding;
@@ -247,7 +281,7 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "messages/:message_id",
             Some(&[
                 ("message_id", message_id),
@@ -255,13 +289,13 @@ impl CatenisClient {
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ReadMessageResponse>(res).await?.data)
+        Ok(Self::parse_response::<ReadMessageResponse>(res)?.data)
     }
 
-    pub async fn retrieve_message_container_async(&mut self, message_id: &str) -> Result<RetrieveMessageContainerResult> {
-        let req = self.get_request_async(
+    pub fn retrieve_message_container(&mut self, message_id: &str) -> Result<RetrieveMessageContainerResult> {
+        let req = self.get_request(
             "messages/:message_id/container",
             Some(&[
                 ("message_id", message_id),
@@ -269,12 +303,12 @@ impl CatenisClient {
             None::<KVList>,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<RetrieveMessageContainerResponse>(res).await?.data)
+        Ok(Self::parse_response::<RetrieveMessageContainerResponse>(res)?.data)
     }
 
-    pub async fn retrieve_message_origin_async(&self, message_id: &str, msg_to_sign: Option<&str>) -> Result<RetrieveMessageOriginResult> {
+    pub fn retrieve_message_origin(&self, message_id: &str, msg_to_sign: Option<&str>) -> Result<RetrieveMessageOriginResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let mut query_params = None;
@@ -287,7 +321,7 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "messages/:message_id/origin",
             Some(&[
                 ("message_id", message_id),
@@ -295,13 +329,13 @@ impl CatenisClient {
             query_params,
         )?;
 
-        let res = self.send_request_async(req).await?;
+        let res = self.send_request(req)?;
 
-        Ok(Self::parse_response_async::<RetrieveMessageOriginResponse>(res).await?.data)
+        Ok(Self::parse_response::<RetrieveMessageOriginResponse>(res)?.data)
     }
 
-    pub async fn retrieve_message_progress_async(&mut self, message_id: &str) -> Result<RetrieveMessageProgressResult> {
-        let req = self.get_request_async(
+    pub fn retrieve_message_progress(&mut self, message_id: &str) -> Result<RetrieveMessageProgressResult> {
+        let req = self.get_request(
             "messages/:message_id/progress",
             Some(&[
                 ("message_id", message_id),
@@ -309,12 +343,12 @@ impl CatenisClient {
             None::<KVList>,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<RetrieveMessageProgressResponse>(res).await?.data)
+        Ok(Self::parse_response::<RetrieveMessageProgressResponse>(res)?.data)
     }
 
-    pub async fn list_messages_async(&mut self, options: Option<ListMessagesOptions>) -> Result<ListMessagesResult> {
+    pub fn list_messages(&mut self, options: Option<ListMessagesOptions>) -> Result<ListMessagesResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let action;
@@ -432,78 +466,78 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "messages",
             None::<KVList>,
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ListMessagesResponse>(res).await?.data)
+        Ok(Self::parse_response::<ListMessagesResponse>(res)?.data)
     }
 
-    pub async fn issue_asset_async(&mut self, asset_info: NewAssetInfo, amount: f64, holding_device: Option<DeviceId>) -> Result<IssueAssetResult> {
+    pub fn issue_asset(&mut self, asset_info: NewAssetInfo, amount: f64, holding_device: Option<DeviceId>) -> Result<IssueAssetResult> {
         let body = IssueAssetRequest {
             asset_info,
             amount,
             holding_device
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "assets/issue",
             body_json,
             None::<KVList>,
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<IssueAssetResponse>(res).await?.data)
+        Ok(Self::parse_response::<IssueAssetResponse>(res)?.data)
     }
 
-    pub async fn reissue_asset_async(&mut self, asset_id: &str, amount: f64, holding_device: Option<DeviceId>) -> Result<ReissueAssetResult> {
+    pub fn reissue_asset(&mut self, asset_id: &str, amount: f64, holding_device: Option<DeviceId>) -> Result<ReissueAssetResult> {
         let body = ReissueAssetRequest {
             amount,
             holding_device
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "assets/:asset_id/issue",
             body_json,
             Some(&[
                 ("asset_id", asset_id)
             ]),
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ReissueAssetResponse>(res).await?.data)
+        Ok(Self::parse_response::<ReissueAssetResponse>(res)?.data)
     }
 
-    pub async fn transfer_asset_async(&mut self, asset_id: &str, amount: f64, receiving_device: DeviceId) -> Result<TransferAssetResult> {
+    pub fn transfer_asset(&mut self, asset_id: &str, amount: f64, receiving_device: DeviceId) -> Result<TransferAssetResult> {
         let body = TransferAssetRequest {
             amount,
             receiving_device
         };
         let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "assets/:asset_id/transfer",
             body_json,
             Some(&[
                 ("asset_id", asset_id)
             ]),
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<TransferAssetResponse>(res).await?.data)
+        Ok(Self::parse_response::<TransferAssetResponse>(res)?.data)
     }
 
-    pub async fn retrieve_asset_info_async(&mut self, asset_id: &str) -> Result<RetrieveAssetInfoResult> {
-        let req = self.get_request_async(
+    pub fn retrieve_asset_info(&mut self, asset_id: &str) -> Result<RetrieveAssetInfoResult> {
+        let req = self.get_request(
             "assets/:asset_id",
             Some(&[
                 ("asset_id", asset_id),
@@ -511,13 +545,13 @@ impl CatenisClient {
             None::<KVList>,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<RetrieveAssetInfoResponse>(res).await?.data)
+        Ok(Self::parse_response::<RetrieveAssetInfoResponse>(res)?.data)
     }
 
-    pub async fn get_asset_balance_async(&mut self, asset_id: &str) -> Result<GetAssetBalanceResult> {
-        let req = self.get_request_async(
+    pub fn get_asset_balance(&mut self, asset_id: &str) -> Result<GetAssetBalanceResult> {
+        let req = self.get_request(
             "assets/:asset_id/balance",
             Some(&[
                 ("asset_id", asset_id),
@@ -525,12 +559,12 @@ impl CatenisClient {
             None::<KVList>,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<GetAssetBalanceResponse>(res).await?.data)
+        Ok(Self::parse_response::<GetAssetBalanceResponse>(res)?.data)
     }
 
-    pub async fn list_owned_assets_async(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListOwnedAssetsResult> {
+    pub fn list_owned_assets(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListOwnedAssetsResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let limit_str;
@@ -553,18 +587,18 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "assets/owned",
             None::<KVList>,
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ListOwnedAssetsResponse>(res).await?.data)
+        Ok(Self::parse_response::<ListOwnedAssetsResponse>(res)?.data)
     }
 
-    pub async fn list_issued_assets_async(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListIssuedAssetsResult> {
+    pub fn list_issued_assets(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListIssuedAssetsResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let limit_str;
@@ -587,18 +621,18 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "assets/issued",
             None::<KVList>,
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ListIssuedAssetsResponse>(res).await?.data)
+        Ok(Self::parse_response::<ListIssuedAssetsResponse>(res)?.data)
     }
 
-    pub async fn retrieve_asset_issuance_history_async(
+    pub fn retrieve_asset_issuance_history(
         &mut self,
         asset_id: &str,
         start_date: Option<UtcDateTime>,
@@ -642,7 +676,7 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "assets/:asset_id/issuance",
             Some(&[
                 ("asset_id", asset_id),
@@ -650,12 +684,12 @@ impl CatenisClient {
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<RetrieveAssetIssuanceHistoryResponse>(res).await?.data)
+        Ok(Self::parse_response::<RetrieveAssetIssuanceHistoryResponse>(res)?.data)
     }
 
-    pub async fn list_asset_holders_async(&mut self, asset_id: &str, limit: Option<u16>, skip: Option<usize>) -> Result<ListAssetHoldersResult> {
+    pub fn list_asset_holders(&mut self, asset_id: &str, limit: Option<u16>, skip: Option<usize>) -> Result<ListAssetHoldersResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let limit_str;
@@ -678,7 +712,7 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "assets/:asset_id/holders",
             Some(&[
                 ("asset_id", asset_id),
@@ -686,25 +720,25 @@ impl CatenisClient {
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ListAssetHoldersResponse>(res).await?.data)
+        Ok(Self::parse_response::<ListAssetHoldersResponse>(res)?.data)
     }
 
-    pub async fn list_permission_events_async(&mut self) -> Result<ListPermissionEventsResult> {
-        let req = self.get_request_async(
+    pub fn list_permission_events(&mut self) -> Result<ListPermissionEventsResult> {
+        let req = self.get_request(
             "permission/events",
             None::<KVList>,
             None::<KVList>,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ListPermissionEventsResponse>(res).await?.data)
+        Ok(Self::parse_response::<ListPermissionEventsResponse>(res)?.data)
     }
 
-    pub async fn retrieve_permission_rights_async(&mut self, event: PermissionEvent) -> Result<RetrievePermissionRightsResult> {
-        let req = self.get_request_async(
+    pub fn retrieve_permission_rights(&mut self, event: PermissionEvent) -> Result<RetrievePermissionRightsResult> {
+        let req = self.get_request(
             "permission/events/:event_name/rights",
             Some(&[
                 ("event_name", event.to_string().as_str()),
@@ -712,28 +746,28 @@ impl CatenisClient {
             None::<KVList>,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<RetrievePermissionRightsResponse>(res).await?.data)
+        Ok(Self::parse_response::<RetrievePermissionRightsResponse>(res)?.data)
     }
 
-    pub async fn set_permission_rights_async(&mut self, event: PermissionEvent, rights: AllPermissionRightsUpdate) -> Result<SetPermissionRightsResult> {
+    pub fn set_permission_rights(&mut self, event: PermissionEvent, rights: AllPermissionRightsUpdate) -> Result<SetPermissionRightsResult> {
         let body_json = serde_json::to_string(&rights)?;
-        let req = self.post_request_async(
+        let req = self.post_request(
             "permission/events/:event_name/rights",
             body_json,
             Some(&[
                 ("event_name", event.to_string().as_str()),
             ]),
             None::<KVList>,
-        ).await?;
+        )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<SetPermissionRightsResponse>(res).await?.data)
+        Ok(Self::parse_response::<SetPermissionRightsResponse>(res)?.data)
     }
 
-    pub async fn check_effective_permission_right_async(&mut self, event: PermissionEvent, device: DeviceId) -> Result<CheckEffectivePermissionRightResult> {
+    pub fn check_effective_permission_right(&mut self, event: PermissionEvent, device: DeviceId) -> Result<CheckEffectivePermissionRightResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let is_prod_unique_id;
@@ -749,7 +783,7 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "permission/events/:event_name/rights/:device_id",
             Some(&[
                 ("event_name", event.to_string().as_str()),
@@ -758,12 +792,12 @@ impl CatenisClient {
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<CheckEffectivePermissionRightResponse>(res).await?.data)
+        Ok(Self::parse_response::<CheckEffectivePermissionRightResponse>(res)?.data)
     }
 
-    pub async fn retrieve_device_identification_info_async(&mut self, device: DeviceId) -> Result<RetrieveDeviceIdentificationInfoResult> {
+    pub fn retrieve_device_identification_info(&mut self, device: DeviceId) -> Result<RetrieveDeviceIdentificationInfoResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
         let is_prod_unique_id;
@@ -779,7 +813,7 @@ impl CatenisClient {
             query_params = Some(params_vec.as_slice());
         }
 
-        let req = self.get_request_async(
+        let req = self.get_request(
             "devices/:device_id",
             Some(&[
                 ("device_id", device.id.as_str()),
@@ -787,45 +821,44 @@ impl CatenisClient {
             query_params,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<RetrieveDeviceIdentificationInfoResponse>(res).await?.data)
+        Ok(Self::parse_response::<RetrieveDeviceIdentificationInfoResponse>(res)?.data)
     }
 
-    pub async fn list_notification_events_async(&mut self) -> Result<ListNotificationEventsResult> {
-        let req = self.get_request_async(
+    pub fn list_notification_events(&mut self) -> Result<ListNotificationEventsResult> {
+        let req = self.get_request(
             "notification/events",
             None::<KVList>,
             None::<KVList>,
         )?;
 
-        let res = self.sign_and_send_request_async(req).await?;
+        let res = self.sign_and_send_request(req)?;
 
-        Ok(Self::parse_response_async::<ListNotificationEventsResponse>(res).await?.data)
+        Ok(Self::parse_response::<ListNotificationEventsResponse>(res)?.data)
     }
 
     // Definition of private methods
 
-    async fn send_request_async(&self, req: Request) -> Result<Response> {
-        let res = self.http_client_async.as_ref()
+    fn send_request(&self, req: Request) -> Result<Response> {
+        let res = self.http_client.as_ref()
             .expect("Trying to access uninitialized HTTP client")
             .execute(req)
-            .await
             .map_err::<Error, _>(Into::into)?;
 
         if res.status().is_success() {
             Ok(res)
         } else {
-            Err(Error::from_http_response_async(res).await)
+            Err(Error::from_http_response(res))
         }
     }
 
-    async fn sign_and_send_request_async(&mut self, mut req: Request) -> Result<Response> {
-        self.sign_request_async(&mut req)?;
-        self.send_request_async(req).await
+    fn sign_and_send_request(&mut self, mut req: Request) -> Result<Response> {
+        self.sign_request(&mut req)?;
+        self.send_request(req)
     }
 
-    fn get_request_async<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<I2>) -> Result<Request>
+    fn get_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, url_params: Option<I>, query_params: Option<I2>) -> Result<Request>
         where
             I: IntoIterator,
             K: AsRef<str>,
@@ -842,7 +875,7 @@ impl CatenisClient {
             endpoint_url_path = Self::merge_url_params(&endpoint_url_path, params);
         }
 
-        let mut req_builder = self.http_client_async.as_ref()
+        let mut req_builder = self.http_client.as_ref()
             .expect("Trying to access uninitialized HTTP client")
             .get(self.base_api_url.join(&endpoint_url_path)?);
 
@@ -854,7 +887,7 @@ impl CatenisClient {
             .map_err(Into::into)
     }
 
-    async fn post_request_async<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, body: String, url_params: Option<I>, query_params: Option<I2>) -> Result<Request>
+    fn post_request<I, K, V, I2, K2, V2>(&self, endpoint_url_path: &str, body: String, url_params: Option<I>, query_params: Option<I2>) -> Result<Request>
         where
             I: IntoIterator,
             K: AsRef<str>,
@@ -871,7 +904,7 @@ impl CatenisClient {
             endpoint_url_path = Self::merge_url_params(&endpoint_url_path, params);
         }
 
-        let mut req_builder = self.http_client_async.as_ref()
+        let mut req_builder = self.http_client.as_ref()
             .expect("Trying to access uninitialized HTTP client")
             .post(self.base_api_url.join(&endpoint_url_path)?);
 
@@ -881,7 +914,7 @@ impl CatenisClient {
 
             if self.use_compression && body.len() >= self.compress_threshold {
                 // Add compressed body
-                req_builder = req_builder.body(Self::compress_body_async(body).await?)
+                req_builder = req_builder.body(Self::compress_body(body)?)
                     .header(CONTENT_ENCODING, HeaderValue::from_static("deflate"));
             } else {
                 // Add plain body
@@ -897,14 +930,14 @@ impl CatenisClient {
             .map_err(Into::into)
     }
 
-    pub(crate) fn get_ws_request_async<I, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>) -> Result<Request>
+    pub(crate) fn get_ws_request<I, K, V>(&self, endpoint_url_path: &str, url_params: Option<I>) -> Result<Request>
         where
             I: IntoIterator,
             K: AsRef<str>,
             V: AsRef<str>,
             <I as IntoIterator>::Item: Borrow<(K, V)>,
     {
-        let mut req = self.get_request_async(endpoint_url_path, url_params, None::<KVList>)?;
+        let mut req = self.get_request(endpoint_url_path, url_params, None::<KVList>)?;
 
         // Replace URL scheme as appropriate
         if let Err(_) = req.url_mut().set_scheme(if self.is_secure {"wss"} else {"ws"}) {
@@ -914,7 +947,7 @@ impl CatenisClient {
         Ok(req)
     }
 
-    pub(crate) fn sign_request_async(&mut self, req: &mut Request) -> Result<()> {
+    pub(crate) fn sign_request(&mut self, req: &mut Request) -> Result<()> {
         let mut new_headers = HeaderMap::new();
         let now;
         let timestamp;
@@ -1007,15 +1040,15 @@ impl CatenisClient {
 
     // Definition of private associated ("static") functions
 
-    async fn parse_response_async<T: DeserializeOwned>(res: Response) -> Result<T> {
-        let body = res.text().await
+    fn parse_response<T: DeserializeOwned>(res: Response) -> Result<T> {
+        let body = res.text()
             .map_err::<Error, _>(|e| Error::new_client_error(Some("Inconsistent Catenis API response"), Some(e)))?;
 
         serde_json::from_str(&body)
             .map_err::<Error, _>(|e| Error::new_client_error(Some("Inconsistent Catenis API response"), Some(e)))
     }
 
-    fn new_http_client_async(use_compression: bool) -> reqwest::Result<HttpClient> {
+    fn new_http_client(use_compression: bool) -> reqwest::Result<HttpClient> {
         let mut client_builder = HttpClientBuilder::new();
 
         // Prepare to add default HTTP headers
@@ -1036,10 +1069,10 @@ impl CatenisClient {
             .build()
     }
 
-    async fn compress_body_async(body: String) -> Result<Vec<u8>> {
-        let mut enc = DeflateEncoder::with_quality(body.as_bytes(), Level::Default);
+    fn compress_body(body: String) -> Result<Vec<u8>> {
+        let mut enc = DeflateEncoder::new(body.as_bytes(), Compression::default());
         let mut enc_body = Vec::new();
-        enc.read_to_end(&mut enc_body).await?;
+        enc.read_to_end(&mut enc_body)?;
 
         Ok(enc_body)
     }
@@ -1049,32 +1082,129 @@ impl CatenisClient {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn it_compress_data_async() {
-        use async_compression::tokio_02::bufread::{DeflateEncoder, DeflateDecoder};
+    use std::str::FromStr;
+
+    use bitcoin_hashes::Hash;
+    use bitcoin_hashes::hex;
+    use bitcoin_hashes::hex::FromHex;
+    use bitcoin_hashes::sha256;
+    use serde::{Deserialize, Serialize};
+    use serde_json::{json, Value};
+
+    use std::io::Read;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Customer {
+        first_name: Option<String>,
+        last_name: Option<String>,
+        age: Option<u8>,
+        country: Option<String>,
+    }
+
+    #[test]
+    fn it_parses_json() {
+        let json = json!({
+            "last_name": "Castro",
+            "country": "Brasil"
+        }).to_string();
+
+        //let cust : Customer = serde_json::from_str(json.as_str()).unwrap();
+        let cust: Value = serde_json::from_str(json.as_str()).unwrap();
+
+        println!("Resulting customer object: {:?}", cust);
+    }
+
+    #[test]
+    fn it_does_hashes() {
+        let hash: sha256::Hash = hex::FromHex::from_hex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap();
+        let hash2 = sha256::Hash::from_hex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap();
+        let hash3 = sha256::Hash::from_str("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap();
+
+        println!("Generated hash: {:?}", sha256::Hash::hash("".as_bytes()));
+        println!("Hash bytes (into_inner): {:?}", hash.into_inner());
+        println!("Hash bytes (as_inner): {:?}", hash.as_inner());
+        println!("Hash bytes (as_ref): {:?}", hash.as_ref());
+        assert_eq!(hash, hash2);
+        assert_eq!(hash, hash3);
+    }
+
+    #[test]
+    fn it_formats_date_time() {
+        let str_time = OffsetDateTime::now_utc().format("%Y%m%dT%H%M%SZ");
+
+        println!("Formatted date & time: {}", str_time);
+    }
+
+    #[test]
+    fn it_replaces_string() {
+        let s = String::from("This is a {!thing}");
+
+        let new_s = s.replace("{!thing}", "test");
+
+        println!("Original string: {}", s);
+        println!("Processed string: {}", new_s);
+    }
+
+    #[test]
+    fn it_init_options() {
+        let host = String::from("localhost:3000");
+        let _opts = [
+            ClientOptions::Host(&host)
+        ];
+    }
+
+    #[test]
+    fn it_parse_hostname() {
+        let url = Url::parse("http://localhost.com:3000").unwrap();
+
+        println!("Parsed hostname URL: {:?}", url);
+        println!("Parsed hostname URL: {:?}", url.host());
+        println!("Parsed hostname URL: {:?}", url.port());
+    }
+
+    #[test]
+    fn it_merge_url_params() {
+        let merged_url = CatenisClient::merge_url_params(
+            "/api/:version/messages/:messageid",
+            &[
+                ("version", "0.10"),
+                ("messageid", "abcdefg")
+            ],
+        );
+
+        println!("Merged URL: {}", merged_url);
+    }
+
+    #[test]
+    fn it_compress_data() {
+        use flate2::bufread::DeflateDecoder;
 
         let str_2_decode = String::from("This is only a test");
         println!("String to compress: {}", str_2_decode);
 
-        let mut enc = DeflateEncoder::with_quality(str_2_decode.as_bytes(), Level::Default);
+        let mut enc = DeflateEncoder::new(str_2_decode.as_bytes(), Compression::default());
         let mut enc_data = Vec::new();
-        enc.read_to_end(&mut enc_data).await.unwrap();
+        enc.read_to_end(&mut enc_data).unwrap();
         println!("Compressed data: {:?}", enc_data);
 
         let mut dec = DeflateDecoder::new(enc_data.as_slice());
         let mut orig_str = String::new();
-        dec.read_to_string(&mut orig_str).await.unwrap();
+        dec.read_to_string(&mut orig_str).unwrap();
         println!("Decompressed data: {}", orig_str);
 
         assert_eq!(str_2_decode, orig_str);
     }
 
-    #[tokio::test]
-    async fn it_call_log_message_async_api_method() {
+    #[test]
+    fn it_call_get_api_method() {
         let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
         let device_id = "drc3XdxNtzoucpw9xiRp";
 
-        let mut ctn_client = CatenisClient::new_async_with_options(
+        let ctn_client = CatenisClient::new(api_access_secret, device_id);
+
+        println!(">>>>>> Instantiated Catenis API client: {:?}", ctn_client);
+
+        let mut ctn_client = CatenisClient::new_with_options(
             api_access_secret,
             device_id,
             &[
@@ -1086,8 +1216,175 @@ mod tests {
 
         println!(">>>>>> Instantiated Catenis API client (CUSTOM): {:?}", ctn_client);
 
-        let result = ctn_client.log_message_async("Test message #3 (2020-11-20)", None).await;
+        let mut req = ctn_client.get_request(
+            "messages/:messageid",
+            Some(&[("messageid", "mdDzw65xix5CJRMCTDKd")]),
+            None::<KVList>, /*Some(&[
+                ("encoding", "utf8"),
+                ("async", "false")
+            ])*/
+        ).unwrap();
+
+        println!(">>>>>> API GET method request: {:?}", req);
+
+        ctn_client.sign_request(&mut req).unwrap();
+
+        println!(">>>>>> API GET method request (SIGNED): {:?}", req);
+
+        let res_result = ctn_client.http_client
+            .expect("Trying to access uninitialized HTTP client")
+            .execute(req);
+
+        println!(">>>>>> API GET method response: {:?}", res_result);
+
+        if let Ok(res) = res_result {
+            let mut parse_json = false;
+
+            if let Some(val) = res.headers().get(CONTENT_TYPE) {
+                if let Ok(s) = val.to_str() {
+                    parse_json = s.contains("json")
+                }
+            }
+
+            if parse_json {
+                if let Ok(json) = res.json::<serde_json::Value>() {
+                    println!(">>>>>> API GET method response body: {}", json);
+                }
+            } else if let Ok(body) = res.text() {
+                println!(">>>>>> API GET method response body: {}", body);
+            }
+        }
+    }
+
+    #[derive(Debug, Serialize)]
+    struct SetPermRights {
+        system: Option<String>,
+    }
+
+    #[test]
+    fn it_call_post_api_method() {
+        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
+        let device_id = "drc3XdxNtzoucpw9xiRp";
+
+        let ctn_client = CatenisClient::new(api_access_secret, device_id);
+
+        println!(">>>>>> Instantiated Catenis API client: {:?}", ctn_client);
+
+        let mut ctn_client = CatenisClient::new_with_options(
+            api_access_secret,
+            device_id,
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+                ClientOptions::UseCompression(false)
+            ],
+        ).unwrap();
+
+        println!(">>>>>> Instantiated Catenis API client (CUSTOM): {:?}", ctn_client);
+
+        let perm_rights = SetPermRights {
+            system: Some(String::from("allow"))
+        };
+        let body = json!(perm_rights).to_string();
+
+        let mut req = ctn_client.post_request(
+            "permission/events/:eventName/rights",
+            body,
+            Some(&[("eventName", "receive-msg")]),
+            None::<KVList>,
+        ).unwrap();
+
+        println!(">>>>>> API POST method request: {:?}", req);
+        println!(">>>>>> API POST method request body: {:?}", req.body());
+
+        ctn_client.sign_request(&mut req).unwrap();
+
+        println!(">>>>>> API POST method request (SIGNED): {:?}", req);
+
+        let res_result = ctn_client.http_client
+            .expect("Trying to access uninitialized HTTP client")
+            .execute(req);
+
+        println!(">>>>>> API POST method response: {:?}", res_result);
+
+        if let Ok(res) = res_result {
+            let mut parse_json = false;
+
+            if let Some(val) = res.headers().get(CONTENT_TYPE) {
+                if let Ok(s) = val.to_str() {
+                    parse_json = s.contains("json")
+                }
+            }
+
+            if parse_json {
+                if let Ok(json) = res.json::<serde_json::Value>() {
+                    println!(">>>>>> API POST method response body: {}", json);
+                }
+            } else if let Ok(body) = res.text() {
+                println!(">>>>>> API POST method response body: {}", body);
+            }
+        }
+    }
+
+    #[test]
+    fn it_call_log_message_api_method() {
+        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
+        let device_id = "drc3XdxNtzoucpw9xiRp";
+
+        let mut ctn_client = CatenisClient::new_with_options(
+            api_access_secret,
+            device_id,
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+                ClientOptions::UseCompression(false)
+            ],
+        ).unwrap();
+
+        println!(">>>>>> Instantiated Catenis API client (CUSTOM): {:?}", ctn_client);
+
+        let result = ctn_client.log_message("Test message #2 (2020-11-20)", None);
 
         println!(">>>>>> Log Message result: {:?}", result);
+    }
+
+    #[test]
+    fn it_get_notify_channel() {
+        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
+        let device_id = "drc3XdxNtzoucpw9xiRp";
+
+        let ctn_client = CatenisClient::new_with_options(
+            api_access_secret,
+            device_id,
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+                ClientOptions::UseCompression(false)
+            ],
+        ).unwrap();
+
+        let notify_channel = ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived);
+
+        println!(">>>>>> WS Notify channel: {:?}", notify_channel);
+    }
+
+    #[test]
+    fn it_call_read_message_api_method() {
+        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
+        let device_id = "drc3XdxNtzoucpw9xiRp";
+
+        let mut ctn_client = CatenisClient::new_with_options(
+            api_access_secret,
+            device_id,
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+                ClientOptions::UseCompression(false)
+            ],
+        ).unwrap();
+
+        let result = ctn_client.read_message("orxtXbWS7c7pQCko9ReN", None);
+
+        println!(">>>>>> Read Message result: {:?}", result);
     }
 }

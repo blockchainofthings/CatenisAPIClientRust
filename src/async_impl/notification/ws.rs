@@ -36,25 +36,27 @@ use tokio::{
 };
 
 use crate::{
-    CatenisClient,
     api::{
         NotificationEvent,
     },
     Result, Error, X_BCOT_TIMESTAMP,
     error::GenericError,
     notification::*,
+    async_impl::{
+        client::CatenisClient,
+    }
 };
 
 #[derive(Debug, Clone)]
-pub struct AsyncWsNotifyChannel{
+pub struct WsNotifyChannel{
     pub(crate) api_client: CatenisClient,
     pub(crate) event: NotificationEvent,
     pub(crate) tx: Option<mpsc::Sender<WsNotifyChannelCommand>>,
 }
 
-impl AsyncWsNotifyChannel {
+impl WsNotifyChannel {
     pub(crate) fn new(api_client: &CatenisClient, event: NotificationEvent) -> Self {
-        AsyncWsNotifyChannel {
+        WsNotifyChannel {
             api_client: api_client.clone(),
             event,
             tx: None,
@@ -70,12 +72,12 @@ impl AsyncWsNotifyChannel {
         //      and generate the required data for authentication with the notification service.
         //      The actual request used to open a WebSocket connection is created below
         //      (from this request's URL).
-        let mut auth_req = self.api_client.get_ws_request_async(
+        let mut auth_req = self.api_client.get_ws_request(
             "notify/ws/:event_name",
             Some(&[("event_name", self.event.to_string().as_str())])
         )?;
 
-        self.api_client.sign_request_async(&mut auth_req)?;
+        self.api_client.sign_request(&mut auth_req)?;
 
         let ws_notify_auth_msg_json = serde_json::to_string(
             &WsNotifyChannelAuthentication {
@@ -393,15 +395,19 @@ impl AsyncWsNotifyChannel {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[tokio::test]
     async fn it_process_ws_notify_channel_events() {
         use std::sync::{Arc, Mutex};
-        use crate::*;
+        use crate::{
+            AsyncCatenisClient, ClientOptions,
+        };
 
         let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
         let device_id = "drc3XdxNtzoucpw9xiRp";
 
-        let ctn_client = CatenisClient::new_async_with_options(
+        let ctn_client = AsyncCatenisClient::new_with_options(
             api_access_secret,
             device_id,
             &[
@@ -413,7 +419,7 @@ mod tests {
 
         // Open WebSocket notification channel closing it after first notify message is received
         let notify_channel = Arc::new(Mutex::new(
-            ctn_client.new_async_ws_notify_channel(NotificationEvent::NewMsgReceived)
+            ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived)
         ));
         let notify_channel_2 = notify_channel.clone();
 
