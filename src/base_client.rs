@@ -23,15 +23,18 @@ pub(crate) trait BaseCatenisClient {
     fn get_signing_key_mut_ref(&mut self) -> &mut Option<[u8; 32]>;
 
     fn update_sign_date_and_key(&mut self, now: &OffsetDateTime) {
-        let lower_bound_sign_date = (now.clone() - Duration::seconds(TIME_VARIATION_SECS as i64)).date() - Duration::days(SIGNATURE_VALIDITY_DAYS as i64);
-
         let sign_date = self.get_sign_date_ref();
+
         let need_to_update = if let None = sign_date {
             true
-        } else if sign_date.unwrap() < lower_bound_sign_date {
-            true
         } else {
-            false
+            let lower_bound_sign_date = (now.clone() - Duration::seconds(TIME_VARIATION_SECS as i64)).date() - Duration::days(SIGNATURE_VALIDITY_DAYS as i64);
+
+            if sign_date.unwrap() < lower_bound_sign_date {
+                true
+            } else {
+                false
+            }
         };
 
         if need_to_update {
