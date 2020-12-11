@@ -43,3 +43,40 @@ impl Error {
         Self::new_api_error(http_status_code, text_message, ctn_message)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn simulate_error_http_response() -> Response {
+        reqwest::get("https://sandbox.catenis.io/bla").await.unwrap()
+    }
+
+    async fn simulate_success_http_response() -> Response {
+        reqwest::get("https://google.com").await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn it_generate_from_http_response() {
+        let res = simulate_error_http_response().await;
+
+        assert_eq!(res.status().is_success(), false);
+
+        let err = Error::from_http_response_async(res).await;
+
+        assert_eq!(err.is_api_error(), true);
+        assert_eq!(err.to_string().starts_with("Catenis API error: [404] - <html>\r\n<head><title>404 Not Found</title>"), true);
+    }
+
+    #[tokio::test]
+    async fn it_try_generate_from_http_response() {
+        let res = simulate_success_http_response().await;
+
+        assert_eq!(res.status().is_success(), true);
+
+        let err = Error::from_http_response_async(res).await;
+
+        assert_eq!(err.is_api_error(), false);
+        assert_eq!(err.to_string(), "Catenis client error: Trying to process successful http response as an error");
+    }
+}
