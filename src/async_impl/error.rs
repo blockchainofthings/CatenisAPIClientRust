@@ -1,7 +1,11 @@
+use reqwest::{
+    Response,
+};
+
 use crate::error::*;
 
 impl Error {
-    pub(crate) async fn from_http_response_async(res: reqwest::Response) -> Self {
+    pub(crate) async fn from_http_response_async(res: Response) -> Self {
         let http_status_code = res.status();
 
         if http_status_code.is_success() {

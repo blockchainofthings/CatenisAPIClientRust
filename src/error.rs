@@ -1,5 +1,7 @@
 use reqwest::{
-    blocking as blk_reqwest,
+    blocking::{
+        Response,
+    },
     StatusCode,
 };
 use serde::Deserialize;
@@ -107,7 +109,7 @@ impl Error {
         }
     }
 
-    pub(crate) fn from_http_response(res: blk_reqwest::Response) -> Self {
+    pub(crate) fn from_http_response(res: Response) -> Self {
         let http_status_code = res.status();
 
         if http_status_code.is_success() {
@@ -230,12 +232,12 @@ mod tests {
         Ok(0)
     }
 
-    fn simulate_error_http_response() -> blk_reqwest::Response {
-        blk_reqwest::get("https://sandbox.catenis.io/bla").unwrap()
+    fn simulate_error_http_response() -> Response {
+        reqwest::blocking::get("https://sandbox.catenis.io/bla").unwrap()
     }
 
-    fn simulate_success_http_response() -> blk_reqwest::Response {
-        blk_reqwest::get("https://google.com").unwrap()
+    fn simulate_success_http_response() -> Response {
+        reqwest::blocking::get("https://google.com").unwrap()
     }
 
     #[test]
