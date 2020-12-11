@@ -12,7 +12,7 @@ mod date_time;
 mod api;
 mod notification;
 #[cfg(feature = "async")]
-mod async_impl;
+pub mod async_impl;
 
 use error::GenericError;
 
@@ -23,8 +23,6 @@ pub use error::{
 pub use date_time::UtcDateTime;
 pub use api::*;
 pub use notification::*;
-#[cfg(feature = "async")]
-pub use async_impl::*;
 
 pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";

@@ -1102,10 +1102,12 @@ mod tests {
 
     #[tokio::test]
     async fn it_call_log_message_api_method() {
+        use async_impl::CatenisClient;
+
         let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
         let device_id = "drc3XdxNtzoucpw9xiRp";
 
-        let mut ctn_client = AsyncCatenisClient::new_with_options(
+        let mut ctn_client = CatenisClient::new_with_options(
             api_access_secret,
             device_id,
             &[
