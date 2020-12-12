@@ -106,7 +106,7 @@ pub(crate) trait BaseCatenisClient {
         }
     }
 
-    fn get_host_with_port(url: &reqwest::Url) -> Option<String> {
+    fn get_host_with_port(url: &Url) -> Option<String> {
         if let Some(host) = url.host_str() {
             let mut host = String::from(host);
 
@@ -120,7 +120,7 @@ pub(crate) trait BaseCatenisClient {
         }
     }
 
-    fn get_url_path_with_query(url: &reqwest::Url) -> String {
+    fn get_url_path_with_query(url: &Url) -> String {
         let mut path = String::from(url.path());
 
         if let Some(query) = url.query() {
