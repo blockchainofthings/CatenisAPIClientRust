@@ -1059,10 +1059,10 @@ impl CatenisClient {
             headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
 
             // Make sure that compressed response body is automatically decompressed
-            client_builder = client_builder.no_gzip();
+            client_builder = client_builder.gzip(true);
         } else {
             // Make sure that response is not compressed
-            client_builder = client_builder.no_gzip();
+            client_builder = client_builder.gzip(false);
         }
 
         client_builder
