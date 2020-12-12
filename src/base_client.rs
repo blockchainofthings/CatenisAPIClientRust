@@ -28,7 +28,7 @@ pub(crate) trait BaseCatenisClient {
         let need_to_update = if let None = sign_date {
             true
         } else {
-            let lower_bound_sign_date = (now.clone() - Duration::seconds(TIME_VARIATION_SECS as i64)).date() - Duration::days(SIGNATURE_VALIDITY_DAYS as i64);
+            let lower_bound_sign_date = (now.clone() + Duration::seconds(TIME_VARIATION_SECS as i64)).date() - Duration::days(SIGNATURE_VALIDITY_DAYS as i64);
 
             if sign_date.unwrap() < lower_bound_sign_date {
                 true
