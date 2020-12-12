@@ -1015,7 +1015,7 @@ impl CatenisClient {
         conformed_request = conformed_request + &sha256::Hash::hash(payload).to_hex() + "\n";
 
         // 2. Update sign date and signing key
-        self.update_sign_date_and_key(&now);
+        self.check_update_sign_date_and_key(&now);
 
         // 3. Assemble string to sign
         let scope = self.sign_date.unwrap().format("%Y%m%d") + "/ctn1_request";
