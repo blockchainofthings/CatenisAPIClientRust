@@ -2471,7 +2471,7 @@ mod tests {
             ].into_iter().zip(vec![
                 String::from("Receive notification of new message from a device"),
                 String::from("Receive message from a device"),
-            ]).collect(),
+            ].into_iter()).collect(),
         );
     }
 
@@ -2546,7 +2546,7 @@ mod tests {
                 String::from("drc3XdxNtzoucpw9xiRp"),
             ].into_iter().zip(vec![
                 PermissionRight::Allow,
-            ]).collect(),
+            ].into_iter()).collect(),
         );
     }
 
@@ -2588,7 +2588,7 @@ mod tests {
             ].into_iter().zip(vec![
                 String::from("A new message has been received"),
                 String::from("Progress of asynchronous message processing has come to an end"),
-            ]).collect(),
+            ].into_iter()).collect(),
         );
     }
 
@@ -3213,7 +3213,7 @@ mod tests {
                 ].into_iter().zip(vec![
                     String::from("Receive notification of new message from a device"),
                     String::from("Receive message from a device"),
-                ]).collect(),
+                ].into_iter()).collect(),
             },
         );
     }
@@ -3283,7 +3283,7 @@ mod tests {
                     String::from("drc3XdxNtzoucpw9xiRp"),
                 ].into_iter().zip(vec![
                     PermissionRight::Allow,
-                ]).collect(),
+                ].into_iter()).collect(),
             },
         );
     }
@@ -3331,7 +3331,7 @@ mod tests {
                 ].into_iter().zip(vec![
                     String::from("A new message has been received"),
                     String::from("Progress of asynchronous message processing has come to an end"),
-                ]).collect(),
+                ].into_iter()).collect(),
             },
         );
     }
