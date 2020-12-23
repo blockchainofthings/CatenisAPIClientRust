@@ -18,11 +18,11 @@ use reqwest::{
 };
 use async_compression::{
     Level,
-    tokio_02::bufread::DeflateEncoder
+    tokio_02::bufread::ZlibEncoder,
 };
 use tokio::io::AsyncReadExt;
 use time::{
-    OffsetDateTime, Date,
+    Date,
 };
 use serde::de::DeserializeOwned;
 
@@ -41,7 +41,7 @@ pub struct CatenisClient {
     compress_threshold: usize,
     sign_date: Option<Date>,
     signing_key: Option<[u8; 32]>,
-    http_client: Option<HttpClient>,
+    http_client: HttpClient,
 }
 
 impl BaseCatenisClient for CatenisClient {
@@ -82,7 +82,7 @@ impl CatenisClient {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: Some(Self::new_http_client(use_compression)?),
+            http_client: Self::new_http_client(use_compression)?,
         })
     }
 
@@ -158,7 +158,7 @@ impl CatenisClient {
             compress_threshold,
             sign_date: None,
             signing_key: None,
-            http_client: Some(Self::new_http_client(use_compression)?),
+            http_client: Self::new_http_client(use_compression)?,
         })
     }
 
@@ -839,8 +839,7 @@ impl CatenisClient {
     // Definition of private methods
 
     async fn send_request(&self, req: Request) -> Result<Response> {
-        let res = self.http_client.as_ref()
-            .expect("Trying to access uninitialized HTTP client")
+        let res = self.http_client
             .execute(req)
             .await
             .map_err::<Error, _>(Into::into)?;
@@ -874,8 +873,7 @@ impl CatenisClient {
             endpoint_url_path = Self::merge_url_params(&endpoint_url_path, params);
         }
 
-        let mut req_builder = self.http_client.as_ref()
-            .expect("Trying to access uninitialized HTTP client")
+        let mut req_builder = self.http_client
             .get(self.base_api_url.join(&endpoint_url_path)?);
 
         if let Some(params) = query_params {
@@ -903,13 +901,12 @@ impl CatenisClient {
             endpoint_url_path = Self::merge_url_params(&endpoint_url_path, params);
         }
 
-        let mut req_builder = self.http_client.as_ref()
-            .expect("Trying to access uninitialized HTTP client")
+        let mut req_builder = self.http_client
             .post(self.base_api_url.join(&endpoint_url_path)?);
 
         if body.len() > 0 {
             // Prepare to add body to request
-            req_builder = req_builder.header(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            req_builder = req_builder.header(CONTENT_TYPE, HeaderValue::from_static("application/json; charset=utf-8"));
 
             if self.use_compression && body.len() >= self.compress_threshold {
                 // Add compressed body
@@ -965,7 +962,7 @@ impl CatenisClient {
             }
 
             // Prepare to add custom 'x-bcot-timestamp' header to HTTP request
-            now = OffsetDateTime::now_utc();
+            now = now!();
             timestamp = now.format("%Y%m%dT%H%M%SZ");
             new_headers.insert(X_BCOT_TIMESTAMP, timestamp.parse()?);
         }
@@ -1069,7 +1066,7 @@ impl CatenisClient {
     }
 
     async fn compress_body(body: String) -> Result<Vec<u8>> {
-        let mut enc = DeflateEncoder::with_quality(body.as_bytes(), Level::Default);
+        let mut enc = ZlibEncoder::with_quality(body.as_bytes(), Level::Default);
         let mut enc_body = Vec::new();
         enc.read_to_end(&mut enc_body).await?;
 
@@ -1080,48 +1077,3297 @@ impl CatenisClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        test_helper::{
+            http_server::{
+                HttpServer, HttpRequest, PartialHttpRequest, HttpServerMode,
+                HttpBody, ContentEncoding, HttpHeader,
+            },
+        },
+    };
+    use super::CatenisClient;
 
     #[tokio::test]
-    async fn it_compress_data() {
-        use async_compression::tokio_02::bufread::{DeflateEncoder, DeflateDecoder};
+    async fn it_issue_api_error() {
+        // Simulate error 'Read Message' API method response
 
-        let str_2_decode = String::from("This is only a test");
-        println!("String to compress: {}", str_2_decode);
+        // Start HTTP server in error simulation node
+        let http_server = HttpServer::new(
+            HttpServerMode::Error(
+                400,
+                Some(HttpBody::from_json(r#"{"status":"error","message":"Invalid message ID"}"#).unwrap()),
+            ),
+            "localhost"
+        );
+        http_server.start();
 
-        let mut enc = DeflateEncoder::with_quality(str_2_decode.as_bytes(), Level::Default);
-        let mut enc_data = Vec::new();
-        enc.read_to_end(&mut enc_data).await.unwrap();
-        println!("Compressed data: {:?}", enc_data);
+        let server_port = http_server.get_port();
 
-        let mut dec = DeflateDecoder::new(enc_data.as_slice());
-        let mut orig_str = String::new();
-        dec.read_to_string(&mut orig_str).await.unwrap();
-        println!("Decompressed data: {}", orig_str);
-
-        assert_eq!(str_2_decode, orig_str);
-    }
-
-    #[tokio::test]
-    async fn it_call_log_message_api_method() {
-        use async_impl::CatenisClient;
-
-        let api_access_secret = "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3";
-        let device_id = "drc3XdxNtzoucpw9xiRp";
-
+        // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            api_access_secret,
-            device_id,
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
+            "d8YpQ7jgPBJEkBrnvp58",
             &[
-                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
-                ClientOptions::UseCompression(false)
             ],
         ).unwrap();
 
-        println!(">>>>>> Instantiated Catenis API client (CUSTOM): {:?}", ctn_client);
+        let result = ctn_client.read_message(
+            "xxxxxxxx",
+            None,
+        ).await;
 
-        let result = ctn_client.log_message("Test message #3 (2020-11-20)", None).await;
+        assert!(result.is_err(), "Returned success from sending request");
+        assert_eq!(result.err().unwrap().to_string(), "Catenis API error: [400] - Invalid message ID");
+    }
 
-        println!(">>>>>> Log Message result: {:?}", result);
+    #[tokio::test]
+    async fn it_log_message() {
+        // Simulate successful 'Log Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "messageId": "oX2mJHwFWp752beHbNDK"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/messages/log", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"message":"Test message #1","options":{"encoding":"utf8","encrypt":true,"offChain":true}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.log_message(
+            "Test message #1",
+            Some(LogMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                encrypt: Some(true),
+                off_chain: Some(true),
+                storage: None,
+                async_: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, LogMessageResult {
+            continuation_token: None,
+            message_id: Some(String::from("oX2mJHwFWp752beHbNDK")),
+            provisional_message_id: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_log_message_async() {
+        // Simulate successful 'Log Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "provisionalMessageId": "pGGqH67dWoZ74qx3RTK8"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/messages/log", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"message":"Test message #1","options":{"encoding":"utf8","encrypt":true,"offChain":true,"async":true}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.log_message(
+            "Test message #1",
+            Some(LogMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                encrypt: Some(true),
+                off_chain: Some(true),
+                storage: None,
+                async_: Some(true),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, LogMessageResult {
+            continuation_token: None,
+            message_id: None,
+            provisional_message_id: Some(String::from("pGGqH67dWoZ74qx3RTK8")),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_log_chunked_message() {
+        // Simulate successful 'Log Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "continuationToken": "kCgPK4rPFyMKei4YsibY"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/messages/log", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"message":{"data":"Test message #1 (part 1)","isFinal":false},"options":{"encoding":"utf8","encrypt":true,"offChain":true}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.log_chunked_message(
+            ChunkedMessage {
+                data: Some(String::from("Test message #1 (part 1)")),
+                is_final: Some(false),
+                continuation_token: None,
+            },
+            Some(LogMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                encrypt: Some(true),
+                off_chain: Some(true),
+                storage: None,
+                async_: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, LogMessageResult {
+            continuation_token: Some(String::from("kCgPK4rPFyMKei4YsibY")),
+            message_id: None,
+            provisional_message_id: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_send_message() {
+        // Simulate successful 'Send Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "messageId": "o3muoTnnD6cXYyarYY38"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/messages/send", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"message":"Test message #1","targetDevice":{"id":"d8YpQ7jgPBJEkBrnvp58"},"options":{"encoding":"utf8","encrypt":true,"offChain":true,"readConfirmation":false}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.send_message(
+            "Test message #1",
+            DeviceId {
+                id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                is_prod_unique_id: None,
+            },
+            Some(SendMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                encrypt: Some(true),
+                off_chain: Some(true),
+                storage: None,
+                read_confirmation: Some(false),
+                async_: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, SendMessageResult {
+            continuation_token: None,
+            message_id: Some(String::from("o3muoTnnD6cXYyarYY38")),
+            provisional_message_id: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_send_message_async() {
+        // Simulate successful 'Send Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "provisionalMessageId": "pfX7fAXyskwHRrP29vEb"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/messages/send", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"message":"Test message #1","targetDevice":{"id":"d8YpQ7jgPBJEkBrnvp58"},"options":{"encoding":"utf8","encrypt":true,"offChain":true,"readConfirmation":false,"async":true}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.send_message(
+            "Test message #1",
+            DeviceId {
+                id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                is_prod_unique_id: None,
+            },
+            Some(SendMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                encrypt: Some(true),
+                off_chain: Some(true),
+                storage: None,
+                read_confirmation: Some(false),
+                async_: Some(true),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, SendMessageResult {
+            continuation_token: None,
+            message_id: None,
+            provisional_message_id: Some(String::from("pfX7fAXyskwHRrP29vEb")),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_send_chunked_message() {
+        // Simulate successful 'Send Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "continuationToken": "kwfLun4YjqKfjaNmEMey"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/messages/send", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"message":{"data":"Test message #1 (part 1)","isFinal":false},"targetDevice":{"id":"d8YpQ7jgPBJEkBrnvp58"},"options":{"encoding":"utf8","encrypt":true,"offChain":true,"readConfirmation":false}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.send_chunked_message(
+            ChunkedMessage {
+                data: Some(String::from("Test message #1 (part 1)")),
+                is_final: Some(false),
+                continuation_token: None,
+            },
+            DeviceId {
+                id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                is_prod_unique_id: None,
+            },
+            Some(SendMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                encrypt: Some(true),
+                off_chain: Some(true),
+                storage: None,
+                read_confirmation: Some(false),
+                async_: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, SendMessageResult {
+            continuation_token: Some(String::from("kwfLun4YjqKfjaNmEMey")),
+            message_id: None,
+            provisional_message_id: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_read_message() {
+        // Simulate successful 'Read Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "msgInfo": {
+      "action": "send",
+      "from": {
+        "deviceId": "drc3XdxNtzoucpw9xiRp",
+        "name": "TstDev1",
+        "prodUniqueId": "ABC123"
+      }
+    },
+    "msgData": "Test message #1"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/o3muoTnnD6cXYyarYY38?encoding=utf8", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
+            "d8YpQ7jgPBJEkBrnvp58",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.read_message(
+            "o3muoTnnD6cXYyarYY38",
+            Some(ReadMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                continuation_token: None,
+                data_chunk_size: None,
+                async_: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ReadMessageResult {
+            msg_info: Some(MessageInfo {
+                action: RecordMessageAction::Send,
+                from: Some(DeviceInfo {
+                    device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    name: Some(String::from("TstDev1")),
+                    prod_unique_id: Some(String::from("ABC123")),
+                }),
+            }),
+            msg_data: Some(String::from("Test message #1")),
+            continuation_token: None,
+            cached_message_id: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_read_message_async() {
+        // Simulate successful 'Read Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "cachedMessageId": "h9W32ic3TxDwusgCQByw"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/o3muoTnnD6cXYyarYY38?encoding=utf8&async=true", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
+            "d8YpQ7jgPBJEkBrnvp58",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.read_message(
+            "o3muoTnnD6cXYyarYY38",
+            Some(ReadMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                continuation_token: None,
+                data_chunk_size: None,
+                async_: Some(true),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ReadMessageResult {
+            msg_info: None,
+            msg_data: None,
+            continuation_token: None,
+            cached_message_id: Some(String::from("h9W32ic3TxDwusgCQByw")),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_read_message_in_chunks() {
+        // Simulate successful 'Read Message' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "msgInfo": {
+      "action": "send",
+      "from": {
+        "deviceId": "drc3XdxNtzoucpw9xiRp",
+        "name": "TstDev1",
+        "prodUniqueId": "ABC123"
+      }
+    },
+    "msgData": "Test messa",
+    "continuationToken": "kSeBcY95kWQCJeRnuxxt"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/oydotwHEvsZFjrbduoSD?encoding=utf8&dataChunkSize=10", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
+            "d8YpQ7jgPBJEkBrnvp58",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.read_message(
+            "oydotwHEvsZFjrbduoSD",
+            Some(ReadMessageOptions {
+                encoding: Some(Encoding::UTF8),
+                continuation_token: None,
+                data_chunk_size: Some(10),
+                async_: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ReadMessageResult {
+            msg_info: Some(MessageInfo {
+                action: RecordMessageAction::Send,
+                from: Some(DeviceInfo {
+                    device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    name: Some(String::from("TstDev1")),
+                    prod_unique_id: Some(String::from("ABC123")),
+                }),
+            }),
+            msg_data: Some(String::from("Test messa")),
+            continuation_token: Some(String::from("kSeBcY95kWQCJeRnuxxt")),
+            cached_message_id: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_message_container() {
+        // Simulate successful 'Retrieve Message Container' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "blockchain": {
+      "txid": "2b04137557772b9265349956bc8a1974f095ade819d6e058656f100357522bc9",
+      "isConfirmed": false
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/mNAgNarEy6a52X57sXWe/container", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_container(
+            "mNAgNarEy6a52X57sXWe",
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageContainerResult {
+            off_chain: None,
+            blockchain: Some(BlockchainContainer {
+                txid: String::from("2b04137557772b9265349956bc8a1974f095ade819d6e058656f100357522bc9"),
+                is_confirmed: false,
+            }),
+            external_storage: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_ipfs_message_container() {
+        // Simulate successful 'Retrieve Message Container' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "blockchain": {
+      "txid": "eec2551b30d851052b8487339879d8e991ce026021f6c9a4c3d23a98a16e5cfc",
+      "isConfirmed": false
+    },
+    "externalStorage": {
+      "ipfs": "Qmdbu9b6tp1uFNENfJsTG5w8ZyzfqL6hRfs5A35PFGMkrK"
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/mrdwKkhNtDSMjBJSHCsb/container", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_container(
+            "mrdwKkhNtDSMjBJSHCsb",
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageContainerResult {
+            off_chain: None,
+            blockchain: Some(BlockchainContainer {
+                txid: String::from("eec2551b30d851052b8487339879d8e991ce026021f6c9a4c3d23a98a16e5cfc"),
+                is_confirmed: false,
+            }),
+            external_storage: Some(IpfsStorage {
+                ipfs: String::from("Qmdbu9b6tp1uFNENfJsTG5w8ZyzfqL6hRfs5A35PFGMkrK"),
+            }),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_off_chain_message_container() {
+        // Simulate successful 'Retrieve Message Container' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "offChain": {
+      "cid": "QmStQXCLiPtza3dGiXvU54mFdCK1ymGRUbzkTsotZCRhNu"
+    },
+    "blockchain": {
+      "txid": "c3bc4e5bbd971e6f0be281225d020363ebeb068e65b0631a4a58b07f1d003d49",
+      "isConfirmed": true
+    },
+    "externalStorage": {
+      "ipfs": "QmWmxXdrrKfJExacaRJsquhwjkZ1UGnPXBZRamTVTy9E26"
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/oX2mJHwFWp752beHbNDK/container", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_container(
+            "oX2mJHwFWp752beHbNDK",
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageContainerResult {
+            off_chain: Some(OffChainContainer {
+                cid: String::from("QmStQXCLiPtza3dGiXvU54mFdCK1ymGRUbzkTsotZCRhNu"),
+            }),
+            blockchain: Some(BlockchainContainer {
+                txid: String::from("c3bc4e5bbd971e6f0be281225d020363ebeb068e65b0631a4a58b07f1d003d49"),
+                is_confirmed: true,
+            }),
+            external_storage: Some(IpfsStorage {
+                ipfs: String::from("QmWmxXdrrKfJExacaRJsquhwjkZ1UGnPXBZRamTVTy9E26"),
+            }),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_message_origin() {
+        // Simulate successful 'Retrieve Message Origin' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "tx": {
+      "txid": "2b04137557772b9265349956bc8a1974f095ade819d6e058656f100357522bc9",
+      "type": "Log Message",
+      "originDevice": {
+        "address": "bcrt1qt5kzpg0z05ypdhkcmcu2ve7exjmweqydhkdyar",
+        "deviceId": "drc3XdxNtzoucpw9xiRp",
+        "name": "TstDev1",
+        "prodUniqueId": "ABC123",
+        "ownedBy": {
+          "company": "Blockchain of Things",
+          "contact": "Cláudio de Castro",
+          "domains": [
+            "blockchainofthings.com",
+            "catenis.io"
+          ]
+        }
+      }
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/mNAgNarEy6a52X57sXWe/origin", DEFAULT_API_VERSION.to_string())),
+            headers: None,
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_origin(
+            "mNAgNarEy6a52X57sXWe",
+            None,
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageOriginResult {
+            tx: Some(BlockchainTransaction {
+                txid: String::from("2b04137557772b9265349956bc8a1974f095ade819d6e058656f100357522bc9"),
+                type_: TransactionType::LogMessage,
+                batch_doc: None,
+                origin_device: Some(OriginDeviceInfo {
+                    address: String::from("bcrt1qt5kzpg0z05ypdhkcmcu2ve7exjmweqydhkdyar"),
+                    device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    name: Some(String::from("TstDev1")),
+                    prod_unique_id: Some(String::from("ABC123")),
+                    owned_by: DeviceOwner {
+                        company: Some(String::from("Blockchain of Things")),
+                        contact: Some(String::from("Cláudio de Castro")),
+                        name: None,
+                        domains: Some(vec![
+                            String::from("blockchainofthings.com"),
+                            String::from("catenis.io"),
+                        ]),
+                    },
+                }),
+            }),
+            off_chain_msg_envelope: None,
+            proof: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_message_origin_with_proof() {
+        // Simulate successful 'Retrieve Message Origin' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "tx": {
+      "txid": "2b04137557772b9265349956bc8a1974f095ade819d6e058656f100357522bc9",
+      "type": "Log Message",
+      "originDevice": {
+        "address": "bcrt1qt5kzpg0z05ypdhkcmcu2ve7exjmweqydhkdyar",
+        "deviceId": "drc3XdxNtzoucpw9xiRp",
+        "name": "TstDev1",
+        "prodUniqueId": "ABC123",
+        "ownedBy": {
+          "company": "Blockchain of Things",
+          "contact": "Cláudio de Castro",
+          "domains": [
+            "blockchainofthings.com",
+            "catenis.io"
+          ]
+        }
+      }
+    },
+    "proof": {
+      "message": "This is only a test",
+      "signature": "J8Xa/oOfkTd1KmuavLSuV7s18p1YFTlQLNd4dgon+3u6UGk5/pYJswYzlQ/sIpuh7V1Oz3eFijOqh+08JUyIoIw="
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/mNAgNarEy6a52X57sXWe/origin?msgToSign=This+is+only+a+test", DEFAULT_API_VERSION.to_string())),
+            headers: None,
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_origin(
+            "mNAgNarEy6a52X57sXWe",
+            Some("This is only a test"),
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageOriginResult {
+            tx: Some(BlockchainTransaction {
+                txid: String::from("2b04137557772b9265349956bc8a1974f095ade819d6e058656f100357522bc9"),
+                type_: TransactionType::LogMessage,
+                batch_doc: None,
+                origin_device: Some(OriginDeviceInfo {
+                    address: String::from("bcrt1qt5kzpg0z05ypdhkcmcu2ve7exjmweqydhkdyar"),
+                    device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    name: Some(String::from("TstDev1")),
+                    prod_unique_id: Some(String::from("ABC123")),
+                    owned_by: DeviceOwner {
+                        company: Some(String::from("Blockchain of Things")),
+                        contact: Some(String::from("Cláudio de Castro")),
+                        name: None,
+                        domains: Some(vec![
+                            String::from("blockchainofthings.com"),
+                            String::from("catenis.io"),
+                        ]),
+                    },
+                }),
+            }),
+            off_chain_msg_envelope: None,
+            proof: Some(ProofInfo {
+                message: String::from("This is only a test"),
+                signature: String::from("J8Xa/oOfkTd1KmuavLSuV7s18p1YFTlQLNd4dgon+3u6UGk5/pYJswYzlQ/sIpuh7V1Oz3eFijOqh+08JUyIoIw="),
+            }),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_off_chain_message_origin() {
+        // Simulate successful 'Retrieve Message Origin' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "tx": {
+      "txid": "c3bc4e5bbd971e6f0be281225d020363ebeb068e65b0631a4a58b07f1d003d49",
+      "type": "Settle Off-Chain Messages",
+      "batchDoc": {
+        "cid": "Qmc55NfZ18gKkP7rgDXsmrSWndgDcEuEXmMGTPrBF3EqTw"
+      }
+    },
+    "offChainMsgEnvelope": {
+      "cid": "QmStQXCLiPtza3dGiXvU54mFdCK1ymGRUbzkTsotZCRhNu",
+      "type": "Log Message",
+      "originDevice": {
+        "pubKeyHash": "0aaf59f937a7e291af500937c28a249857f37cc4",
+        "deviceId": "drc3XdxNtzoucpw9xiRp",
+        "name": "TstDev1",
+        "prodUniqueId": "ABC123",
+        "ownedBy": {
+          "company": "Blockchain of Things",
+          "contact": "Cláudio de Castro",
+          "domains": [
+            "blockchainofthings.com",
+            "catenis.io"
+          ]
+        }
+      }
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/oX2mJHwFWp752beHbNDK/origin", DEFAULT_API_VERSION.to_string())),
+            headers: None,
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_origin(
+            "oX2mJHwFWp752beHbNDK",
+            None,
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageOriginResult {
+            tx: Some(BlockchainTransaction {
+                txid: String::from("c3bc4e5bbd971e6f0be281225d020363ebeb068e65b0631a4a58b07f1d003d49"),
+                type_: TransactionType::SettleOffChainMessages,
+                batch_doc: Some(BatchDocRef {
+                    cid: String::from("Qmc55NfZ18gKkP7rgDXsmrSWndgDcEuEXmMGTPrBF3EqTw"),
+                }),
+                origin_device: None,
+            }),
+            off_chain_msg_envelope: Some(OffChainMsgEnvelope {
+                cid: String::from("QmStQXCLiPtza3dGiXvU54mFdCK1ymGRUbzkTsotZCRhNu"),
+                type_: OffChainMessageType::LogMessage,
+                origin_device: Some(OffChainOriginDeviceInfo {
+                    pub_key_hash: String::from("0aaf59f937a7e291af500937c28a249857f37cc4"),
+                    device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    name: Some(String::from("TstDev1")),
+                    prod_unique_id: Some(String::from("ABC123")),
+                    owned_by: DeviceOwner {
+                        company: Some(String::from("Blockchain of Things")),
+                        contact: Some(String::from("Cláudio de Castro")),
+                        name: None,
+                        domains: Some(vec![
+                            String::from("blockchainofthings.com"),
+                            String::from("catenis.io"),
+                        ]),
+                    },
+                }),
+            }),
+            proof: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_off_chain_message_origin_with_proof() {
+        // Simulate successful 'Retrieve Message Origin' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "tx": {
+      "txid": "c3bc4e5bbd971e6f0be281225d020363ebeb068e65b0631a4a58b07f1d003d49",
+      "type": "Settle Off-Chain Messages",
+      "batchDoc": {
+        "cid": "Qmc55NfZ18gKkP7rgDXsmrSWndgDcEuEXmMGTPrBF3EqTw"
+      }
+    },
+    "offChainMsgEnvelope": {
+      "cid": "QmStQXCLiPtza3dGiXvU54mFdCK1ymGRUbzkTsotZCRhNu",
+      "type": "Log Message",
+      "originDevice": {
+        "pubKeyHash": "0aaf59f937a7e291af500937c28a249857f37cc4",
+        "deviceId": "drc3XdxNtzoucpw9xiRp",
+        "name": "TstDev1",
+        "prodUniqueId": "ABC123",
+        "ownedBy": {
+          "company": "Blockchain of Things",
+          "contact": "Cláudio de Castro",
+          "domains": [
+            "blockchainofthings.com",
+            "catenis.io"
+          ]
+        }
+      }
+    },
+    "proof": {
+      "message": "This is only a test",
+      "signature": "IJqbOc0MCqplwYWIfMHLXU4dcGPcPwmxWx+SmF+ulguNaDSJrOTogYlyiLF+8UdeV1CqeyWj49da70w8VGXjWsI="
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/oX2mJHwFWp752beHbNDK/origin?msgToSign=This+is+only+a+test", DEFAULT_API_VERSION.to_string())),
+            headers: None,
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_origin(
+            "oX2mJHwFWp752beHbNDK",
+            Some("This is only a test"),
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageOriginResult {
+            tx: Some(BlockchainTransaction {
+                txid: String::from("c3bc4e5bbd971e6f0be281225d020363ebeb068e65b0631a4a58b07f1d003d49"),
+                type_: TransactionType::SettleOffChainMessages,
+                batch_doc: Some(BatchDocRef {
+                    cid: String::from("Qmc55NfZ18gKkP7rgDXsmrSWndgDcEuEXmMGTPrBF3EqTw"),
+                }),
+                origin_device: None,
+            }),
+            off_chain_msg_envelope: Some(OffChainMsgEnvelope {
+                cid: String::from("QmStQXCLiPtza3dGiXvU54mFdCK1ymGRUbzkTsotZCRhNu"),
+                type_: OffChainMessageType::LogMessage,
+                origin_device: Some(OffChainOriginDeviceInfo {
+                    pub_key_hash: String::from("0aaf59f937a7e291af500937c28a249857f37cc4"),
+                    device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    name: Some(String::from("TstDev1")),
+                    prod_unique_id: Some(String::from("ABC123")),
+                    owned_by: DeviceOwner {
+                        company: Some(String::from("Blockchain of Things")),
+                        contact: Some(String::from("Cláudio de Castro")),
+                        name: None,
+                        domains: Some(vec![
+                            String::from("blockchainofthings.com"),
+                            String::from("catenis.io"),
+                        ]),
+                    },
+                }),
+            }),
+            proof: Some(ProofInfo {
+                message: String::from("This is only a test"),
+                signature: String::from("IJqbOc0MCqplwYWIfMHLXU4dcGPcPwmxWx+SmF+ulguNaDSJrOTogYlyiLF+8UdeV1CqeyWj49da70w8VGXjWsI="),
+            }),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_log_message_progress() {
+        // Simulate successful 'Retrieve Message Progress' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "action": "log",
+    "progress": {
+      "bytesProcessed": 15,
+      "done": true,
+      "success": true,
+      "finishDate": "2020-12-22T20:39:14.945Z"
+    },
+    "result": {
+      "messageId": "m9eZa29ezn69dj8PWyby"
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/pTZCgjKYEyHfu4rNPWct/progress", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_progress(
+            "pTZCgjKYEyHfu4rNPWct",
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageProgressResult {
+            action: MessageAction::Log,
+            progress: MessageProcessProgress {
+                bytes_processed: 15,
+                done: true,
+                success: Some(true),
+                error: None,
+                finish_date: Some("2020-12-22T20:39:14.945Z".into()),
+            },
+            result: Some(MessageProcessSuccess {
+                message_id: String::from("m9eZa29ezn69dj8PWyby"),
+                continuation_token: None,
+            }),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_read_message_progress() {
+        // Simulate successful 'Retrieve Message Progress' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "action": "read",
+    "progress": {
+      "bytesProcessed": 15,
+      "done": true,
+      "success": true,
+      "finishDate": "2020-12-22T20:59:23.468Z"
+    },
+    "result": {
+      "messageId": "mq8hdaBLsnrfPx922tgt",
+      "continuationToken": "kLg9NA2zGMdeoTG72Ncs"
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages/hE6dX6vdtwwDx9tbdtS7/progress", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_message_progress(
+            "hE6dX6vdtwwDx9tbdtS7",
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveMessageProgressResult {
+            action: MessageAction::Read,
+            progress: MessageProcessProgress {
+                bytes_processed: 15,
+                done: true,
+                success: Some(true),
+                error: None,
+                finish_date: Some("2020-12-22T20:59:23.468Z".into()),
+            },
+            result: Some(MessageProcessSuccess {
+                message_id: String::from("mq8hdaBLsnrfPx922tgt"),
+                continuation_token: Some(String::from("kLg9NA2zGMdeoTG72Ncs")),
+            }),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_messages() {
+        // Simulate successful 'List Messages' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "messages": [
+      {
+        "messageId": "o3zWcDpLGzzKACEarFTP",
+        "action": "send",
+        "direction": "inbound",
+        "from": {
+          "deviceId": "d8YpQ7jgPBJEkBrnvp58",
+          "name": "TstDev2"
+        },
+        "read": false,
+        "date": "2020-12-22T17:26:54.868Z"
+      },
+      {
+        "messageId": "oydotwHEvsZFjrbduoSD",
+        "action": "send",
+        "direction": "outbound",
+        "to": {
+          "deviceId": "d8YpQ7jgPBJEkBrnvp58",
+          "name": "TstDev2"
+        },
+        "readConfirmationEnabled": false,
+        "date": "2020-12-22T17:31:58.137Z"
+      },
+      {
+        "messageId": "oBWDDXEYBa7aShx2ckfE",
+        "action": "log",
+        "read": false,
+        "date": "2020-12-22T17:44:36.776Z"
+      },
+      {
+        "messageId": "mNAgNarEy6a52X57sXWe",
+        "action": "log",
+        "read": false,
+        "date": "2020-12-22T17:44:59.755Z"
+      }
+    ],
+    "msgCount": 4,
+    "hasMore": true
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/messages?startDate=2020-12-22T00%3A00%3A00.000Z&limit=4", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_messages(
+            Some(ListMessagesOptions {
+                action: None,
+                direction: None,
+                from_devices: None,
+                to_devices: None,
+                read_state: None,
+                start_date: Some("2020-12-22T00:00:00Z".into()),
+                end_date: None,
+                limit: Some(4),
+                skip: None,
+            })
+        ).await.unwrap();
+
+        assert_eq!(result, ListMessagesResult {
+            messages: vec![
+                MessageEntry {
+                    message_id: String::from("o3zWcDpLGzzKACEarFTP"),
+                    action: RecordMessageAction::Send,
+                    direction: Some(MessageDirection::Inbound),
+                    from: Some(DeviceInfo {
+                        device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                        name: Some(String::from("TstDev2")),
+                        prod_unique_id: None,
+                    }),
+                    to: None,
+                    read_confirmation_enabled: None,
+                    read: Some(false),
+                    date: "2020-12-22T17:26:54.868Z".into(),
+                },
+                MessageEntry {
+                    message_id: String::from("oydotwHEvsZFjrbduoSD"),
+                    action: RecordMessageAction::Send,
+                    direction: Some(MessageDirection::Outbound),
+                    from: None,
+                    to: Some(DeviceInfo {
+                        device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                        name: Some(String::from("TstDev2")),
+                        prod_unique_id: None,
+                    }),
+                    read_confirmation_enabled: Some(false),
+                    read: None,
+                    date: "2020-12-22T17:31:58.137Z".into(),
+                },
+                MessageEntry {
+                    message_id: String::from("oBWDDXEYBa7aShx2ckfE"),
+                    action: RecordMessageAction::Log,
+                    direction: None,
+                    from: None,
+                    to: None,
+                    read_confirmation_enabled: None,
+                    read: Some(false),
+                    date: "2020-12-22T17:44:36.776Z".into(),
+                },
+                MessageEntry {
+                    message_id: String::from("mNAgNarEy6a52X57sXWe"),
+                    action: RecordMessageAction::Log,
+                    direction: None,
+                    from: None,
+                    to: None,
+                    read_confirmation_enabled: None,
+                    read: Some(false),
+                    date: "2020-12-22T17:44:59.755Z".into(),
+                },
+            ],
+            msg_count: 4,
+            has_more: true,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_issue_asset() {
+        // Simulate successful 'Issue Asset' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "assetId": "aBy2ovnucyWaSB6Tro9x"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/issue", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"assetInfo":{"name":"RCT-001","description":"Test asset #1","canReissue":true,"decimalPlaces":2},"amount":1500.0}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.issue_asset(
+            NewAssetInfo {
+                name: String::from("RCT-001"),
+                description: Some(String::from("Test asset #1")),
+                can_reissue: true,
+                decimal_places: 2,
+            },
+            1500.0,
+            None,
+        ).await.unwrap();
+
+        assert_eq!(result, IssueAssetResult {
+            asset_id: String::from("aBy2ovnucyWaSB6Tro9x"),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_reissue_asset() {
+        // Simulate successful 'Reissue Asset' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "totalExistentBalance": 1612.5
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/issue", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"amount":112.5,"holdingDevice":{"id":"d8YpQ7jgPBJEkBrnvp58"}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.reissue_asset(
+            "aBy2ovnucyWaSB6Tro9x",
+            112.5,
+            Some(DeviceId {
+                id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                is_prod_unique_id: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ReissueAssetResult {
+            total_existent_balance: 1612.5,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_transfer_asset() {
+        // Simulate successful 'Transfer Asset' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "remainingBalance": 1445.75
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/transfer", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"amount":54.25,"receivingDevice":{"id":"d8YpQ7jgPBJEkBrnvp58"}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.transfer_asset(
+            "aBy2ovnucyWaSB6Tro9x",
+            54.25,
+            DeviceId {
+                id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                is_prod_unique_id: None,
+            },
+        ).await.unwrap();
+
+        assert_eq!(result, TransferAssetResult {
+            remaining_balance: 1445.75,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_asset_info() {
+        // Simulate successful 'Retrieve Asset Info' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "assetId": "aBy2ovnucyWaSB6Tro9x",
+    "name": "RCT-001",
+    "description": "Test asset #1",
+    "canReissue": true,
+    "decimalPlaces": 2,
+    "issuer": {
+      "deviceId": "drc3XdxNtzoucpw9xiRp",
+      "name": "TstDev1",
+      "prodUniqueId": "ABC123"
+    },
+    "totalExistentBalance": 1612.5
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_asset_info(
+            "aBy2ovnucyWaSB6Tro9x",
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveAssetInfoResult {
+            asset_id: String::from("aBy2ovnucyWaSB6Tro9x"),
+            name: String::from("RCT-001"),
+            description: String::from("Test asset #1"),
+            can_reissue: true,
+            decimal_places: 2,
+            issuer: DeviceInfo {
+                device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                name: Some(String::from("TstDev1")),
+                prod_unique_id: Some(String::from("ABC123")),
+            },
+            total_existent_balance: 1612.5,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_get_asset_balance() {
+        // Simulate successful 'Get Asset Balance' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "total": 1445.75,
+    "unconfirmed": 0
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/balance", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.get_asset_balance(
+            "aBy2ovnucyWaSB6Tro9x",
+        ).await.unwrap();
+
+        assert_eq!(result, GetAssetBalanceResult {
+            total: 1445.75,
+            unconfirmed: 0.0,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_owned_assets() {
+        // Simulate successful 'List Owned Assets' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "ownedAssets": [
+      {
+        "assetId": "aA2XY6SLvcNAjkQSrQXR",
+        "balance": {
+          "total": 150,
+          "unconfirmed": 0
+        }
+      },
+      {
+        "assetId": "aBy2ovnucyWaSB6Tro9x",
+        "balance": {
+          "total": 1445.75,
+          "unconfirmed": 0
+        }
+      },
+      {
+        "assetId": "aLdqZdNAaxisqySiXtQZ",
+        "balance": {
+          "total": 150,
+          "unconfirmed": 0
+        }
+      }
+    ],
+    "hasMore": true
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/owned?limit=3&skip=38", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_owned_assets(
+            Some(3),
+            Some(38),
+        ).await.unwrap();
+
+        assert_eq!(result, ListOwnedAssetsResult {
+            owned_assets: vec![
+                OwnedAssetEntry {
+                    asset_id: String::from("aA2XY6SLvcNAjkQSrQXR"),
+                    balance: AssetBalance {
+                        total: 150.0,
+                        unconfirmed: 0.0,
+                    },
+                },
+                OwnedAssetEntry {
+                    asset_id: String::from("aBy2ovnucyWaSB6Tro9x"),
+                    balance: AssetBalance {
+                        total: 1445.75,
+                        unconfirmed: 0.0,
+                    },
+                },
+                OwnedAssetEntry {
+                    asset_id: String::from("aLdqZdNAaxisqySiXtQZ"),
+                    balance: AssetBalance {
+                        total: 150.0,
+                        unconfirmed: 0.0,
+                    },
+                },
+            ],
+            has_more: true,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_issued_assets() {
+        // Simulate successful 'List Issued Assets' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "issuedAssets": [
+      {
+        "assetId": "aN8YerJ9XpgKeWogYiih",
+        "totalExistentBalance": 25
+      },
+      {
+        "assetId": "aBy2ovnucyWaSB6Tro9x",
+        "totalExistentBalance": 1612.5
+      },
+      {
+        "assetId": "a4wk2EXWEKHzyoK7ZYgS",
+        "totalExistentBalance": 1500
+      }
+    ],
+    "hasMore": false
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/issued?skip=157", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_issued_assets(
+            None,
+            Some(157),
+        ).await.unwrap();
+
+        assert_eq!(result, ListIssuedAssetsResult {
+            issued_assets: vec![
+                IssuedAssetEntry {
+                    asset_id: String::from("aN8YerJ9XpgKeWogYiih"),
+                    total_existent_balance: 25.0,
+                },
+                IssuedAssetEntry {
+                    asset_id: String::from("aBy2ovnucyWaSB6Tro9x"),
+                    total_existent_balance: 1612.5,
+                },
+                IssuedAssetEntry {
+                    asset_id: String::from("a4wk2EXWEKHzyoK7ZYgS"),
+                    total_existent_balance: 1500.0,
+                },
+            ],
+            has_more: false,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_asset_issuance_history() {
+        // Simulate successful 'Retrieve Asset Issuance History' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "issuanceEvents": [
+      {
+        "amount": 1500,
+        "holdingDevice": {
+          "deviceId": "drc3XdxNtzoucpw9xiRp",
+          "name": "TstDev1",
+          "prodUniqueId": "ABC123"
+        },
+        "date": "2020-12-23T10:51:45.935Z"
+      },
+      {
+        "amount": 112.5,
+        "holdingDevice": {
+          "deviceId": "d8YpQ7jgPBJEkBrnvp58",
+          "name": "TstDev2"
+        },
+        "date": "2020-12-23T11:17:23.731Z"
+      }
+    ],
+    "hasMore": false
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/issuance?startDate=2020-12-01T00%3A00%3A00.000Z", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_asset_issuance_history(
+            "aBy2ovnucyWaSB6Tro9x",
+            Some("2020-12-01T00:00:00Z".into()),
+            None,
+            None,
+            None,
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveAssetIssuanceHistoryResult {
+            issuance_events: vec![
+                AssetIssuanceEventEntry {
+                    amount: 1500.0,
+                    holding_device: DeviceInfo {
+                        device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                        name: Some(String::from("TstDev1")),
+                        prod_unique_id: Some(String::from("ABC123")),
+                    },
+                    date: "2020-12-23T10:51:45.935Z".into(),
+                },
+                AssetIssuanceEventEntry {
+                    amount: 112.5,
+                    holding_device: DeviceInfo {
+                        device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                        name: Some(String::from("TstDev2")),
+                        prod_unique_id: None,
+                    },
+                    date: "2020-12-23T11:17:23.731Z".into(),
+                },
+            ],
+            has_more: false,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_asset_holders() {
+        // Simulate successful 'List Asset Holders' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "assetHolders": [
+      {
+        "holder": {
+          "deviceId": "d8YpQ7jgPBJEkBrnvp58",
+          "name": "TstDev2"
+        },
+        "balance": {
+          "total": 166.75,
+          "unconfirmed": 0
+        }
+      },
+      {
+        "holder": {
+          "deviceId": "drc3XdxNtzoucpw9xiRp",
+          "name": "TstDev1",
+          "prodUniqueId": "ABC123"
+        },
+        "balance": {
+          "total": 1445.75,
+          "unconfirmed": 0
+        }
+      }
+    ],
+    "hasMore": false
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/holders", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_asset_holders(
+            "aBy2ovnucyWaSB6Tro9x",
+            None,
+            None,
+        ).await.unwrap();
+
+        assert_eq!(result, ListAssetHoldersResult {
+            asset_holders: vec![
+                AssetHolderEntry {
+                    holder: DeviceInfo {
+                        device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                        name: Some(String::from("TstDev2")),
+                        prod_unique_id: None,
+                    },
+                    balance: AssetBalance {
+                        total: 166.75,
+                        unconfirmed: 0.0,
+                    },
+                },
+                AssetHolderEntry {
+                    holder: DeviceInfo {
+                        device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                        name: Some(String::from("TstDev1")),
+                        prod_unique_id: Some(String::from("ABC123")),
+                    },
+                    balance: AssetBalance {
+                        total: 1445.75,
+                        unconfirmed: 0.0,
+                    },
+                },
+            ],
+            has_more: false,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_permission_events() {
+        // Simulate successful 'List Permission Events' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "receive-notify-new-msg": "Receive notification of new message from a device",
+    "receive-notify-msg-read": "Receive notification of message read by a device",
+    "receive-notify-asset-of": "Receive notification of asset received for assets issued by a device",
+    "receive-notify-asset-from": "Receive notification of asset received from a device",
+    "receive-notify-confirm-asset-of": "Receive notification of confirmation of pending asset issued by a device",
+    "receive-notify-confirm-asset-from": "Receive notification of confirmation of pending asset transferred by a device",
+    "send-read-msg-confirm": "Send read message confirmation to a device",
+    "receive-msg": "Receive message from a device",
+    "disclose-main-props": "Disclose device's main properties (name, product unique ID) to a device",
+    "disclose-identity-info": "Disclose device's basic identification information to a device",
+    "receive-asset-of": "Receive an amount of an asset issued by a device",
+    "receive-asset-from": "Receive an amount of an asset from a device"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/permission/events", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_permission_events().await.unwrap();
+
+        assert_eq!(
+            result,
+            vec![
+                PermissionEvent::ReceiveNotifyNewMsg,
+                PermissionEvent::ReceiveNotifyMsgRead,
+                PermissionEvent::ReceiveNotifyAssetOf,
+                PermissionEvent::ReceiveNotifyAssetFrom,
+                PermissionEvent::ReceiveNotifyConfirmAssetOf,
+                PermissionEvent::ReceiveNotifyConfirmAssetFrom,
+                PermissionEvent::SendReadMsgConfirm,
+                PermissionEvent::ReceiveMsg,
+                PermissionEvent::DiscloseMainProps,
+                PermissionEvent::DiscloseIdentityInfo,
+                PermissionEvent::ReceiveAssetOf,
+                PermissionEvent::ReceiveAssetFrom,
+            ].into_iter().zip(vec![
+                String::from("Receive notification of new message from a device"),
+                String::from("Receive notification of message read by a device"),
+                String::from("Receive notification of asset received for assets issued by a device"),
+                String::from("Receive notification of asset received from a device"),
+                String::from("Receive notification of confirmation of pending asset issued by a device"),
+                String::from("Receive notification of confirmation of pending asset transferred by a device"),
+                String::from("Send read message confirmation to a device"),
+                String::from("Receive message from a device"),
+                String::from("Disclose device's main properties (name, product unique ID) to a device"),
+                String::from("Disclose device's basic identification information to a device"),
+                String::from("Receive an amount of an asset issued by a device"),
+                String::from("Receive an amount of an asset from a device"),
+            ].into_iter()).collect()
+        );
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_permission_rights() {
+        // Simulate successful 'Retrieve Permission Rights' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "system": "deny",
+    "catenisNode": {
+      "allow": [
+        "0"
+      ]
+    },
+    "client": {
+      "allow": [
+        "cEXd845DSMw9g6tM5dhy"
+      ],
+      "deny": [
+        "c3gBoX45xk3yAmenyDRD"
+      ]
+    },
+    "device": {
+      "deny": [
+        {
+          "deviceId": "drc3XdxNtzoucpw9xiRp",
+          "name": "TstDev1",
+          "prodUniqueId": "ABC123"
+        }
+      ],
+      "allow": [
+        {
+          "deviceId": "dhQMtAZxKHgfceZM5k9B"
+        },
+        {
+          "deviceId": "daqRTyQK6hwo8dLtMnT7"
+        }
+      ]
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/permission/events/receive-msg/rights", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_permission_rights(
+            PermissionEvent::ReceiveMsg,
+        ).await.unwrap();
+
+        assert_eq!(result, RetrievePermissionRightsResult {
+            system: PermissionRight::Deny,
+            catenis_node: Some(PermissionRightsSetting {
+                allow: Some(vec![
+                    String::from("0"),
+                ]),
+                deny: None,
+            }),
+            client: Some(PermissionRightsSetting {
+                allow: Some(vec![
+                    String::from("cEXd845DSMw9g6tM5dhy"),
+                ]),
+                deny: Some(vec![
+                    String::from("c3gBoX45xk3yAmenyDRD"),
+                ]),
+            }),
+            device: Some(DevicePermissionRightsSetting {
+                allow: Some(vec![
+                    DeviceInfo {
+                        device_id: String::from("dhQMtAZxKHgfceZM5k9B"),
+                        name: None,
+                        prod_unique_id: None,
+                    },
+                    DeviceInfo {
+                        device_id: String::from("daqRTyQK6hwo8dLtMnT7"),
+                        name: None,
+                        prod_unique_id: None,
+                    },
+                ]),
+                deny: Some(vec![
+                    DeviceInfo {
+                        device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                        name: Some(String::from("TstDev1")),
+                        prod_unique_id: Some(String::from("ABC123")),
+                    },
+                ]),
+            }),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_set_permission_rights() {
+        // Simulate successful 'Set Permission Rights' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "success": true
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/permission/events/receive-msg/rights", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"system":"deny","catenisNode":{"allow":["0"],"none":["*"]},"client":{"allow":["self"],"deny":["c3gBoX45xk3yAmenyDRD"],"none":["*"]},"device":{"allow":[{"id":"CL4_DEV001","isProdUniqueId":true},{"id":"dhQMtAZxKHgfceZM5k9B"}],"deny":[{"id":"self"}],"none":[{"id":"*"}]}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.set_permission_rights(
+            PermissionEvent::ReceiveMsg,
+            AllPermissionRightsUpdate {
+                system: Some(PermissionRight::Deny),
+                catenis_node: Some(PermissionRightsUpdate {
+                    allow: Some(vec![
+                        String::from("0"),
+                    ]),
+                    deny: None,
+                    none: Some(vec![
+                        String::from("*"),
+                    ]),
+                }),
+                client: Some(PermissionRightsUpdate {
+                    allow: Some(vec![
+                        String::from("self"),
+                    ]),
+                    deny: Some(vec![
+                        String::from("c3gBoX45xk3yAmenyDRD"),
+                    ]),
+                    none: Some(vec![
+                        String::from("*"),
+                    ]),
+                }),
+                device: Some(DevicePermissionRightsUpdate {
+                    allow: Some(vec![
+                        DeviceId {
+                            id: String::from("CL4_DEV001"),
+                            is_prod_unique_id: Some(true),
+                        },
+                        DeviceId {
+                            id: String::from("dhQMtAZxKHgfceZM5k9B"),
+                            is_prod_unique_id: None,
+                        }
+                    ]),
+                    deny: Some(vec![
+                        DeviceId {
+                            id: String::from("self"),
+                            is_prod_unique_id: None,
+                        },
+                    ]),
+                    none: Some(vec![
+                        DeviceId {
+                            id: String::from("*"),
+                            is_prod_unique_id: None,
+                        }
+                    ]),
+                }),
+            },
+        ).await.unwrap();
+
+        assert_eq!(result, SetPermissionRightsResult {
+            success: true,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_check_effective_permission_right() {
+        // Simulate successful 'Check Effective Permission Right' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "d8YpQ7jgPBJEkBrnvp58": "allow"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/permission/events/receive-msg/rights/d8YpQ7jgPBJEkBrnvp58", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.check_effective_permission_right(
+            PermissionEvent::ReceiveMsg,
+            DeviceId {
+                id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                is_prod_unique_id: None,
+            },
+        ).await.unwrap();
+
+        assert_eq!(
+            result,
+            vec![
+                String::from("d8YpQ7jgPBJEkBrnvp58"),
+            ].into_iter().zip(vec![
+                PermissionRight::Allow
+            ].into_iter()).collect(),
+        );
+    }
+
+    #[tokio::test]
+    async fn it_retrieve_device_identification_info() {
+        // Simulate successful 'Retrieve Device Identification Info' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "catenisNode": {
+      "ctnNodeIndex": 0,
+      "name": "Catenis Hub",
+      "description": "Central Catenis node used to house clients that access the system through the Internet"
+    },
+    "client": {
+      "clientId": "cEXd845DSMw9g6tM5dhy",
+      "name": "Test Client 1"
+    },
+    "device": {
+      "deviceId": "drc3XdxNtzoucpw9xiRp",
+      "name": "TstDev1",
+      "prodUniqueId": "ABC123"
+    }
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/devices/self", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.retrieve_device_identification_info(
+            DeviceId {
+                id: String::from("self"),
+                is_prod_unique_id: None,
+            },
+        ).await.unwrap();
+
+        assert_eq!(result, RetrieveDeviceIdentificationInfoResult {
+            catenis_node: CatenisNodeInfo {
+                ctn_node_index: 0,
+                name: Some(String::from("Catenis Hub")),
+                description: Some(String::from("Central Catenis node used to house clients that access the system through the Internet")),
+            },
+            client: ClientInfo {
+                client_id: String::from("cEXd845DSMw9g6tM5dhy"),
+                name: Some(String::from("Test Client 1")),
+            },
+            device: DeviceInfo {
+                device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                name: Some(String::from("TstDev1")),
+                prod_unique_id: Some(String::from("ABC123")),
+            },
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_notification_events() {
+        // Simulate successful 'List Notification Events' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "new-msg-received": "A new message has been received",
+    "sent-msg-read": "Previously sent message has been read by intended receiver (target device)",
+    "asset-received": "An amount of an asset has been received",
+    "asset-confirmed": "An amount of an asset that was pending due to an asset transfer has been confirmed",
+    "final-msg-progress": "Progress of asynchronous message processing has come to an end"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            secure: None,
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/notification/events", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_notification_events().await.unwrap();
+
+        assert_eq!(
+            result,
+            vec![
+                NotificationEvent::NewMsgReceived,
+                NotificationEvent::SentMsgRead,
+                NotificationEvent::AssetReceived,
+                NotificationEvent::AssetConfirmed,
+                NotificationEvent::FinalMsgProgress,
+            ].into_iter().zip(vec![
+                String::from("A new message has been received"),
+                String::from("Previously sent message has been read by intended receiver (target device)"),
+                String::from("An amount of an asset has been received"),
+                String::from("An amount of an asset that was pending due to an asset transfer has been confirmed"),
+                String::from("Progress of asynchronous message processing has come to an end"),
+            ].into_iter()).collect()
+        );
+    }
+
+    #[tokio::test]
+    async fn it_send_request_success() {
+        // Simulate successful 'Read Message' API method response
+
+        // Start HTTP server in success simulation node
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(r#"{"status":"success","data":{"msgInfo":{"action":"send","from":{"deviceId":"d8YpQ7jgPBJEkBrnvp58","name":"TstDev2"}},"msgData":"Test message #1 (2020-11-30)"}}"#).unwrap(),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        // Get request used for calling 'Read Message' API method
+        let req = ctn_client.get_request(
+            "messages/:message_id",
+            Some(&[
+                ("message_id", "oNXszDazhuq4utktSMMi"),
+            ]),
+            Some(&[
+                ("encoding", "utf8"),
+            ]),
+        ).unwrap();
+
+        let result = ctn_client.send_request(req).await;
+
+        assert!(!result.is_err(), "Returned error from sending request");
+
+        let res = result.unwrap();
+
+        assert!(res.status().is_success(), "Unexpected HTTP response: not success");
+        assert_eq!(res.text().await.unwrap(), r#"{"status":"success","data":{"msgInfo":{"action":"send","from":{"deviceId":"d8YpQ7jgPBJEkBrnvp58","name":"TstDev2"}},"msgData":"Test message #1 (2020-11-30)"}}"#);
+    }
+
+    #[tokio::test]
+    async fn it_send_request_error() {
+        // Simulate error 'Read Message' API method response
+
+        // Start HTTP server in error simulation node
+        let http_server = HttpServer::new(
+            HttpServerMode::Error(
+                400,
+                Some(HttpBody::from_json(r#"{"status":"error","message":"Invalid message ID"}"#).unwrap()),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        // Get request used for calling 'Read Message' API method
+        let req = ctn_client.get_request(
+            "messages/:message_id",
+            Some(&[
+                ("message_id", "oNXszDazhuq4utktSMMi"),
+            ]),
+            Some(&[
+                ("encoding", "utf8"),
+            ]),
+        ).unwrap();
+
+        let result = ctn_client.send_request(req).await;
+
+        assert!(result.is_err(), "Returned success from sending request");
+        assert_eq!(result.err().unwrap().to_string(), "Catenis API error: [400] - Invalid message ID");
+    }
+
+    #[tokio::test]
+    async fn it_sign_and_send_request_success() {
+        // Simulate successful 'Read Message' API method response
+
+        // Start HTTP server in success simulation node
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(r#"{"status":"success","data":{"msgInfo":{"action":"send","from":{"deviceId":"d8YpQ7jgPBJEkBrnvp58","name":"TstDev2"}},"msgData":"Test message #1 (2020-11-30)"}}"#).unwrap(),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        // Get request used for calling 'Read Message' API method
+        let req = ctn_client.get_request(
+            "messages/:message_id",
+            Some(&[
+                ("message_id", "oNXszDazhuq4utktSMMi"),
+            ]),
+            Some(&[
+                ("encoding", "utf8"),
+            ]),
+        ).unwrap();
+
+        let result = ctn_client.sign_and_send_request(req).await;
+
+        assert!(!result.is_err(), "Returned error from sending request");
+
+        let res = result.unwrap();
+
+        assert!(res.status().is_success(), "Unexpected HTTP response: not success");
+        assert_eq!(res.text().await.unwrap(), r#"{"status":"success","data":{"msgInfo":{"action":"send","from":{"deviceId":"d8YpQ7jgPBJEkBrnvp58","name":"TstDev2"}},"msgData":"Test message #1 (2020-11-30)"}}"#);
+    }
+
+    #[tokio::test]
+    async fn it_sign_and_send_request_error() {
+        // Simulate error 'Read Message' API method response
+
+        // Start HTTP server in error simulation node
+        let http_server = HttpServer::new(
+            HttpServerMode::Error(
+                400,
+                Some(HttpBody::from_json(r#"{"status":"error","message":"Invalid message ID"}"#).unwrap()),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        // Get request used for calling 'Read Message' API method
+        let req = ctn_client.get_request(
+            "messages/:message_id",
+            Some(&[
+                ("message_id", "oNXszDazhuq4utktSMMi"),
+            ]),
+            Some(&[
+                ("encoding", "utf8"),
+            ]),
+        ).unwrap();
+
+        let result = ctn_client.sign_and_send_request(req).await;
+
+        assert!(result.is_err(), "Returned success from sending request");
+        assert_eq!(result.err().unwrap().to_string(), "Catenis API error: [400] - Invalid message ID");
+    }
+
+    #[test]
+    fn it_assemble_get_request() {
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+        ).unwrap();
+
+        // Get request used for calling 'Read Message' API method
+        let req = ctn_client.get_request(
+            "messages/:message_id",
+            Some(&[
+                ("message_id", "oNXszDazhuq4utktSMMi"),
+            ]),
+            Some(&[
+                ("encoding", "utf8"),
+            ]),
+        ).unwrap();
+
+        assert_eq!(req.method().to_string(), "GET");
+        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/oNXszDazhuq4utktSMMi?encoding=utf8");
+    }
+
+    #[tokio::test]
+    async fn it_assemble_post_request() {
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+        ).unwrap();
+
+        // Get request used for calling 'Log Message' API method
+        let req = ctn_client.post_request(
+            "messages/log",
+            String::from(r#"{"message":"Test message","options":{"encoding":"utf8"}}"#),
+            None::<KVList>,
+            None::<KVList>,
+        ).await.unwrap();
+
+        assert_eq!(req.method().to_string(), "POST");
+        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/log");
+        assert_eq!(req.headers().get(CONTENT_TYPE).unwrap(), "application/json; charset=utf-8");
+        assert!(!req.headers().contains_key(CONTENT_ENCODING), "Request contains unexpected Content-Encoding HTTP header");
+        assert_eq!(req.body().unwrap().as_bytes().unwrap(), b"{\"message\":\"Test message\",\"options\":{\"encoding\":\"utf8\"}}");
+    }
+
+    #[tokio::test]
+    async fn it_assemble_post_request_with_compression_not_done() {
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::UseCompression(true),
+                ClientOptions::CompressThreshold(57),
+            ]
+        ).unwrap();
+
+        // Get request used for calling 'Log Message' API method
+        let req = ctn_client.post_request(
+            "messages/log",
+            String::from(r#"{"message":"Test message","options":{"encoding":"utf8"}}"#),
+            None::<KVList>,
+            None::<KVList>,
+        ).await.unwrap();
+
+        assert_eq!(req.method().to_string(), "POST");
+        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/log");
+        assert_eq!(req.headers().get(CONTENT_TYPE).unwrap(), "application/json; charset=utf-8");
+        assert!(!req.headers().contains_key(CONTENT_ENCODING), "Request contains unexpected Content-Encoding HTTP header");
+        assert_eq!(req.body().unwrap().as_bytes().unwrap(), b"{\"message\":\"Test message\",\"options\":{\"encoding\":\"utf8\"}}");
+    }
+
+    #[tokio::test]
+    async fn it_assemble_post_request_with_compression() {
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::UseCompression(true),
+                ClientOptions::CompressThreshold(56),
+            ]
+        ).unwrap();
+
+        // Get request used for calling 'Log Message' API method
+        let req = ctn_client.post_request(
+            "messages/log",
+            String::from(r#"{"message":"Test message","options":{"encoding":"utf8"}}"#),
+            None::<KVList>,
+            None::<KVList>,
+        ).await.unwrap();
+
+        assert_eq!(req.method().to_string(), "POST");
+        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/log");
+        assert_eq!(req.headers().get(CONTENT_TYPE).unwrap(), "application/json; charset=utf-8");
+        assert_eq!(req.headers().get(CONTENT_ENCODING).unwrap(), "deflate");
+        assert_eq!(req.body().unwrap().as_bytes().unwrap(), b"\x78\x9c\x01\x38\x00\xc7\xff\x7b\x22\x6d\x65\x73\x73\x61\x67\x65\x22\x3a\x22\x54\x65\x73\x74\x20\x6d\x65\x73\x73\x61\x67\x65\x22\x2c\x22\x6f\x70\x74\x69\x6f\x6e\x73\x22\x3a\x7b\x22\x65\x6e\x63\x6f\x64\x69\x6e\x67\x22\x3a\x22\x75\x74\x66\x38\x22\x7d\x7d\x2e\x4c\x13\x83");
+    }
+
+    #[test]
+    fn it_assemble_get_ws_request() {
+        // Instantiate Catenis API client
+        let ctn_client = CatenisClient::new(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+        ).unwrap();
+
+        // Get request used to connect to WebSocket notification channel
+        let req = ctn_client.get_ws_request(
+            "notify/ws/:event_name",
+            Some(&[
+                ("event_name", "new-msg-received"),
+            ]),
+        ).unwrap();
+
+        assert_eq!(req.method().to_string(), "GET");
+        assert_eq!(req.url().to_string(), "wss://catenis.io/api/0.10/notify/ws/new-msg-received");
+    }
+
+    #[tokio::test]
+    async fn it_sign_request() {
+        // Set custom "system" time
+        let _custom_time = test_helper::time::CustomTime::set(&time::date!(2020-12-01).with_time(time::time!(06:00:00)).assume_utc());
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            "drc3XdxNtzoucpw9xiRp",
+            &[
+                ClientOptions::Host("localhost:3000"),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+
+        // Get request used for calling 'Log Message' API method
+        let mut req = ctn_client.post_request(
+            "messages/log",
+            String::from(r#"{"message":"Test message","options":{"encoding":"utf8"}}"#),
+            None::<KVList>,
+            None::<KVList>,
+        ).await.unwrap();
+
+        // Sign request
+        ctn_client.sign_request(&mut req).unwrap();
+
+        assert!(req.headers().contains_key(X_BCOT_TIMESTAMP), "Missing X-Bcot-Timestamp header");
+        assert_eq!(req.headers().get(X_BCOT_TIMESTAMP).unwrap(), "20201201T060000Z");
+        assert!(req.headers().contains_key(AUTHORIZATION), "Missing Authorization header");
+        assert_eq!(req.headers().get(AUTHORIZATION).unwrap(), "CTN1-HMAC-SHA256 Credential=drc3XdxNtzoucpw9xiRp/20201201/ctn1_request,Signature=af2b41b1786b812809cc01291fd324880f48017b96332192566006d2fd7eefb4");
+    }
+
+    #[tokio::test]
+    async fn it_parse_response() {
+        // Simulate successful 'Read Message' API method response
+
+        // Start HTTP server in success simulation node
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(r#"{"status":"success","data":{"msgInfo":{"action":"send","from":{"deviceId":"d8YpQ7jgPBJEkBrnvp58","name":"TstDev2"}},"msgData":"Test message #1 (2020-11-30)"}}"#).unwrap(),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Send HTTP request and get response
+        let res = reqwest::get(&format!("http://localhost:{}/messages/oNXszDazhuq4utktSMMi", server_port)).await.unwrap();
+
+        // Parse response
+        let result: Result<ReadMessageResponse> = CatenisClient::parse_response(res).await;
+
+        assert!(!result.is_err(), "Error parsing Catenis API response");
+        assert_eq!(result.unwrap(), ReadMessageResponse {
+            status: String::from("success"),
+            data: ReadMessageResult {
+                msg_info: Some(MessageInfo {
+                    action: RecordMessageAction::Send,
+                    from: Some(DeviceInfo {
+                        device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                        name: Some(String::from("TstDev2")),
+                        prod_unique_id: None,
+                    }),
+                }),
+                msg_data: Some(String::from("Test message #1 (2020-11-30)")),
+                continuation_token: None,
+                cached_message_id: None,
+            },
+        });
+    }
+
+    #[tokio::test]
+    async fn it_parse_invalid_response() {
+        // Simulate invalid 'Read Message' API method response
+
+        // Start HTTP server in success simulation node
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from(r#"{}"#),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Send HTTP request and get response
+        let res = reqwest::get(&format!("http://localhost:{}/messages/oNXszDazhuq4utktSMMi", server_port)).await.unwrap();
+
+        // Parse response
+        let result: Result<ReadMessageResponse> = CatenisClient::parse_response(res).await;
+
+        assert!(result.is_err(), "No error reported while parsing invalid Catenis API response");
+        assert_eq!(result.err().unwrap().to_string(), String::from("Catenis client error: Inconsistent Catenis API response: missing field `status` at line 1 column 2"))
+    }
+
+    #[tokio::test]
+    async fn it_get_new_http_client_with_no_compression() {
+        // Start HTTP server in echo mode to retrieve HTTP request effectively sent
+        let http_server = HttpServer::new(HttpServerMode::Echo, "localhost");
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Get HTTP client and generate an HTTP request
+        let http_client = CatenisClient::new_http_client(false).unwrap();
+        let req = http_client.get(&format!("http://localhost:{}/messages", server_port)).build().unwrap();
+
+        // Send HTTP request and get the response
+        let res = http_client.execute(req).await.unwrap();
+
+        // Parse returned HTTP request from response body
+        let res_body = res.text().await.unwrap();
+        let http_request = HttpRequest::from_json(&res_body).unwrap();
+
+        assert!(!http_request.headers.contains_key("accept-encoding"), "Request having unexpected Accept-Encoding HTTP header");
+    }
+
+    #[tokio::test]
+    async fn it_get_new_http_client_with_compression() {
+        // Start HTTP server in echo mode to retrieve HTTP request effectively sent
+        let http_server = HttpServer::new(HttpServerMode::Echo, "localhost");
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Get HTTP client and generate an HTTP request
+        let http_client = CatenisClient::new_http_client(true).unwrap();
+        let req = http_client.get(&format!("http://localhost:{}/messages", server_port)).build().unwrap();
+
+        // Send HTTP request and get the response
+        let res = http_client.execute(req).await.unwrap();
+
+        // Parse returned HTTP request from response body
+        let res_body = res.text().await.unwrap();
+        let http_request = HttpRequest::from_json(&res_body).unwrap();
+
+        assert!(http_request.headers.contains_key("accept-encoding"), "Request missing expected Accept-Encoding HTTP header");
+        assert_eq!(http_request.headers.get("accept-encoding").unwrap().value, "gzip");
+    }
+
+    #[tokio::test]
+    async fn it_automatically_decompress_response() {
+        // Start HTTP server in success simulation mode
+        let body = r#"{"status":"success","data":{"messageId":"mg9x9vCqYMg9YtKdDwQx"}}"#;
+
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(body).unwrap().with_content_encoding(ContentEncoding::Gzip),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Get HTTP client and generate an HTTP request
+        let http_client = CatenisClient::new_http_client(true).unwrap();
+        let req = http_client.get(&format!("http://localhost:{}/messages", server_port)).build().unwrap();
+
+        // Send HTTP request and get the response
+        let res = http_client.execute(req).await.unwrap();
+
+        // Read response body
+        let res_body = res.bytes().await.unwrap();
+
+        assert_eq!(res_body.as_ref(), body.as_bytes());
+    }
+
+    #[tokio::test]
+    async fn it_compress_body() {
+        let body = String::from("This is only a test");
+
+        let compressed_body = CatenisClient::compress_body(body).await.unwrap();
+
+        assert_eq!(compressed_body.as_slice(), b"\x78\x9c\x0b\xc9\xc8\x2c\x56\x00\xa2\xfc\xbc\x9c\x4a\x85\x44\x85\x92\xd4\xe2\x12\x00\x43\x81\x06\xd8");
     }
 }

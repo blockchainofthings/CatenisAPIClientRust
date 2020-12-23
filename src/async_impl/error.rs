@@ -47,30 +47,60 @@ impl Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    async fn simulate_error_http_response() -> Response {
-        reqwest::get("https://sandbox.catenis.io/bla").await.unwrap()
-    }
-
-    async fn simulate_success_http_response() -> Response {
-        reqwest::get("https://google.com").await.unwrap()
-    }
+    use crate::{
+        test_helper::{
+            http_server::{
+                HttpServer, HttpServerMode, HttpBody,
+            },
+        },
+    };
 
     #[tokio::test]
     async fn it_generate_from_http_response() {
-        let res = simulate_error_http_response().await;
+        // Simulate Catenis API error
+
+        // Start HTTP server in error simulation mode
+        let http_server = HttpServer::new(
+            HttpServerMode::Error(
+                500,
+                Some(HttpBody::from_json(r#"{"status":"error","message":"Internal server error"}"#).unwrap()),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Send (any) HTTP request and get the response
+        let res = reqwest::get(&format!("http://localhost:{}/", server_port)).await.unwrap();
 
         assert_eq!(res.status().is_success(), false);
 
         let err = Error::from_http_response_async(res).await;
 
         assert_eq!(err.is_api_error(), true);
-        assert_eq!(err.to_string().starts_with("Catenis API error: [404] - <html>\r\n<head><title>404 Not Found</title>"), true);
+        assert_eq!(err.to_string(), "Catenis API error: [500] - Internal server error");
     }
 
     #[tokio::test]
     async fn it_try_generate_from_http_response() {
-        let res = simulate_success_http_response().await;
+        // Simulate successful Catenis API response
+
+        // Start HTTP server in success simulation mode
+        let body = r#"{"status":"success","data":{"messageId":"mg9x9vCqYMg9YtKdDwQx"}}"#;
+
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(body).unwrap(),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Send (any) HTTP request and get the response
+        let res = reqwest::get(&format!("http://localhost:{}/", server_port)).await.unwrap();
 
         assert_eq!(res.status().is_success(), true);
 

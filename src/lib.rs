@@ -5,10 +5,17 @@ use std::{
     },
 };
 
+#[macro_use]
+mod macro_impl;
+
 mod base_client;
 mod client;
 mod error;
 mod date_time;
+
+#[cfg(test)]
+mod test_helper;
+
 pub mod api;
 pub mod notification;
 #[cfg(feature = "async")]

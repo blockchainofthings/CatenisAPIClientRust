@@ -136,7 +136,7 @@ pub struct OffChainContainer {
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainContainer {
     pub txid: String,
-    pub confirmed: bool,
+    pub is_confirmed: bool,
 }
 
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
@@ -170,8 +170,8 @@ pub enum TransactionType {
     SendMessage,
     #[serde(rename = "Log Message")]
     LogMessage,
-    #[serde(rename = "Settle Off-Chain Message")]
-    SettleOffChainMessage,
+    #[serde(rename = "Settle Off-Chain Messages")]
+    SettleOffChainMessages,
 }
 
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
@@ -376,7 +376,7 @@ pub struct IssuedAssetEntry {
 pub struct AssetIssuanceEventEntry {
     pub amount: f64,
     pub holding_device: DeviceInfo,
-
+    pub date: UtcDateTime,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -529,7 +529,7 @@ pub struct AllPermissionRightsUpdate {
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CatenisNodeInfo {
-    pub ctn_node_idx: u32,
+    pub ctn_node_index: u32,
     pub name: Option<String>,
     pub description: Option<String>,
 }
@@ -644,7 +644,7 @@ pub struct RetrieveMessageContainerResult {
 pub struct RetrieveMessageOriginResult {
     pub tx: Option<BlockchainTransaction>,
     pub off_chain_msg_envelope: Option<OffChainMsgEnvelope>,
-    pub proof: ProofInfo,
+    pub proof: Option<ProofInfo>,
 }
 
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
@@ -1184,13 +1184,13 @@ mod tests {
 
     #[test]
     fn it_deserialize_blockchain_container() {
-        let json = r#"{"txid":"505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7","confirmed":true}"#;
+        let json = r#"{"txid":"505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7","isConfirmed":true}"#;
 
         let blockchain_container: BlockchainContainer = serde_json::from_str(json).unwrap();
 
         assert_eq!(blockchain_container, BlockchainContainer {
             txid: String::from("505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7"),
-            confirmed: true,
+            is_confirmed: true,
         });
     }
 
@@ -1657,7 +1657,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_asset_issuance_event_entry() {
-        let json = r#"{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"}}"#;
+        let json = r#"{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"}"#;
 
         let asset_issuance_event_entry: AssetIssuanceEventEntry = serde_json::from_str(json).unwrap();
 
@@ -1668,6 +1668,7 @@ mod tests {
                 name: None,
                 prod_unique_id: None,
             },
+            date: "2020-12-23T10:51:45.935Z".into(),
         });
     }
 
@@ -1953,12 +1954,12 @@ mod tests {
 
     #[test]
     fn it_deserialize_catenis_node_info_no_opts() {
-        let json = r#"{"ctnNodeIdx":0}"#;
+        let json = r#"{"ctnNodeIndex":0}"#;
 
         let catenis_node_info: CatenisNodeInfo = serde_json::from_str(json).unwrap();
 
         assert_eq!(catenis_node_info, CatenisNodeInfo {
-            ctn_node_idx: 0,
+            ctn_node_index: 0,
             name: None,
             description: None,
         });
@@ -1966,12 +1967,12 @@ mod tests {
 
     #[test]
     fn it_deserialize_catenis_node_info_all_opts() {
-        let json = r#"{"ctnNodeIdx":0,"name":"Catenis Hub","description":"Central Catenis node used to house clients that access the system through the Internet"}"#;
+        let json = r#"{"ctnNodeIndex":0,"name":"Catenis Hub","description":"Central Catenis node used to house clients that access the system through the Internet"}"#;
 
         let catenis_node_info: CatenisNodeInfo = serde_json::from_str(json).unwrap();
 
         assert_eq!(catenis_node_info, CatenisNodeInfo {
-            ctn_node_idx: 0,
+            ctn_node_index: 0,
             name: Some(String::from("Catenis Hub")),
             description: Some(String::from("Central Catenis node used to house clients that access the system through the Internet")),
         });
@@ -2145,7 +2146,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_message_container_result_all_opts() {
-        let json = r#"{"offChain":{"cid":"QmZZAweh5MvVxhCMggaCD8MNykTYdgDx6XLjCK7LhwWtoX"},"blockchain":{"txid":"505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7","confirmed":true},"externalStorage":{"ipfs":"Qmd2FBqC4dGTbiNe7HyYEJR2grpLWPzDNfBgajkDNRhK1X"}}"#;
+        let json = r#"{"offChain":{"cid":"QmZZAweh5MvVxhCMggaCD8MNykTYdgDx6XLjCK7LhwWtoX"},"blockchain":{"txid":"505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7","isConfirmed":true},"externalStorage":{"ipfs":"Qmd2FBqC4dGTbiNe7HyYEJR2grpLWPzDNfBgajkDNRhK1X"}}"#;
 
         let retrieve_message_container_result: RetrieveMessageContainerResult = serde_json::from_str(json).unwrap();
 
@@ -2155,7 +2156,7 @@ mod tests {
             }),
             blockchain: Some(BlockchainContainer {
                 txid: String::from("505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7"),
-                confirmed: true,
+                is_confirmed: true,
             }),
             external_storage: Some(IpfsStorage {
                 ipfs: String::from("Qmd2FBqC4dGTbiNe7HyYEJR2grpLWPzDNfBgajkDNRhK1X"),
@@ -2165,17 +2166,14 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_message_origin_result_no_opts() {
-        let json = r#"{"proof":{"message":"This is only a test","signature":"IEn9KpwdIitSilCuERUz5Dg+siFe+tW7Bh4ezHDer5NBCQD1jfWJgYL2SnKnzBnGbay/WXL7eykuK8N4o4gRLNo="}}"#;
+        let json = r#"{}"#;
 
         let retrieve_message_origin_result: RetrieveMessageOriginResult = serde_json::from_str(json).unwrap();
 
         assert_eq!(retrieve_message_origin_result, RetrieveMessageOriginResult {
             tx: None,
             off_chain_msg_envelope: None,
-            proof: ProofInfo {
-                message: String::from("This is only a test"),
-                signature: String::from("IEn9KpwdIitSilCuERUz5Dg+siFe+tW7Bh4ezHDer5NBCQD1jfWJgYL2SnKnzBnGbay/WXL7eykuK8N4o4gRLNo=")
-            },
+            proof: None,
         });
     }
 
@@ -2197,10 +2195,10 @@ mod tests {
                 type_: OffChainMessageType::SendMessage,
                 origin_device: None,
             }),
-            proof: ProofInfo {
+            proof: Some(ProofInfo {
                 message: String::from("This is only a test"),
                 signature: String::from("IEn9KpwdIitSilCuERUz5Dg+siFe+tW7Bh4ezHDer5NBCQD1jfWJgYL2SnKnzBnGbay/WXL7eykuK8N4o4gRLNo=")
-            },
+            }),
         });
     }
 
@@ -2395,7 +2393,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_asset_issuance_history_result() {
-        let json = r#"{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"}},{"amount":150,"holdingDevice":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"}}],"hasMore":false}"#;
+        let json = r#"{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"},{"amount":150,"holdingDevice":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"date":"2020-12-23T11:17:23.731Z"}],"hasMore":false}"#;
 
         let retrieve_asset_issuance_history_result: RetrieveAssetIssuanceHistoryResult = serde_json::from_str(json).unwrap();
 
@@ -2408,6 +2406,7 @@ mod tests {
                         name: None,
                         prod_unique_id: None,
                     },
+                    date: "2020-12-23T10:51:45.935Z".into(),
                 },
                 AssetIssuanceEventEntry {
                     amount: 150.0,
@@ -2416,6 +2415,7 @@ mod tests {
                         name: None,
                         prod_unique_id: None,
                     },
+                    date: "2020-12-23T11:17:23.731Z".into(),
                 },
             ],
             has_more: false,
@@ -2552,13 +2552,13 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_device_identification_info_result() {
-        let json = r#"{"catenisNode":{"ctnNodeIdx":0},"client":{"clientId":"cEXd845DSMw9g6tM5dhy"},"device":{"deviceId":"drc3XdxNtzoucpw9xiRp"}}"#;
+        let json = r#"{"catenisNode":{"ctnNodeIndex":0},"client":{"clientId":"cEXd845DSMw9g6tM5dhy"},"device":{"deviceId":"drc3XdxNtzoucpw9xiRp"}}"#;
 
         let retrieve_device_identification_info_result: RetrieveDeviceIdentificationInfoResult = serde_json::from_str(json).unwrap();
 
         assert_eq!(retrieve_device_identification_info_result, RetrieveDeviceIdentificationInfoResult {
             catenis_node: CatenisNodeInfo {
-                ctn_node_idx: 0,
+                ctn_node_index: 0,
                 name: None,
                 description: None,
             },
@@ -2881,7 +2881,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_message_container_response() {
-        let json = r#"{"status":"success","data":{"offChain":{"cid":"QmZZAweh5MvVxhCMggaCD8MNykTYdgDx6XLjCK7LhwWtoX"},"blockchain":{"txid":"505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7","confirmed":true},"externalStorage":{"ipfs":"Qmd2FBqC4dGTbiNe7HyYEJR2grpLWPzDNfBgajkDNRhK1X"}}}"#;
+        let json = r#"{"status":"success","data":{"offChain":{"cid":"QmZZAweh5MvVxhCMggaCD8MNykTYdgDx6XLjCK7LhwWtoX"},"blockchain":{"txid":"505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7","isConfirmed":true},"externalStorage":{"ipfs":"Qmd2FBqC4dGTbiNe7HyYEJR2grpLWPzDNfBgajkDNRhK1X"}}}"#;
 
         let retrieve_message_container_response: RetrieveMessageContainerResponse = serde_json::from_str(json).unwrap();
 
@@ -2893,7 +2893,7 @@ mod tests {
                 }),
                 blockchain: Some(BlockchainContainer {
                     txid: String::from("505cf8efc6c2f73a1dd25ee49c2419bfedb6e545a17c8768f740c20b3c4f85c7"),
-                    confirmed: true,
+                    is_confirmed: true,
                 }),
                 external_storage: Some(IpfsStorage {
                     ipfs: String::from("Qmd2FBqC4dGTbiNe7HyYEJR2grpLWPzDNfBgajkDNRhK1X"),
@@ -2922,10 +2922,10 @@ mod tests {
                     type_: OffChainMessageType::SendMessage,
                     origin_device: None,
                 }),
-                proof: ProofInfo {
+                proof: Some(ProofInfo {
                     message: String::from("This is only a test"),
                     signature: String::from("IEn9KpwdIitSilCuERUz5Dg+siFe+tW7Bh4ezHDer5NBCQD1jfWJgYL2SnKnzBnGbay/WXL7eykuK8N4o4gRLNo=")
-                },
+                }),
             },
         });
     }
@@ -3129,7 +3129,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_asset_issuance_history_response() {
-        let json = r#"{"status":"success","data":{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"}},{"amount":150,"holdingDevice":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"}}],"hasMore":false}}"#;
+        let json = r#"{"status":"success","data":{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"},{"amount":150,"holdingDevice":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"date":"2020-12-23T11:17:23.731Z"}],"hasMore":false}}"#;
 
         let retrieve_asset_issuance_history_response: RetrieveAssetIssuanceHistoryResponse = serde_json::from_str(json).unwrap();
 
@@ -3144,6 +3144,7 @@ mod tests {
                             name: None,
                             prod_unique_id: None,
                         },
+                        date: "2020-12-23T10:51:45.935Z".into(),
                     },
                     AssetIssuanceEventEntry {
                         amount: 150.0,
@@ -3152,6 +3153,7 @@ mod tests {
                             name: None,
                             prod_unique_id: None,
                         },
+                        date: "2020-12-23T11:17:23.731Z".into(),
                     },
                 ],
                 has_more: false,
@@ -3290,7 +3292,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_device_identification_info_response() {
-        let json = r#"{"status":"success","data":{"catenisNode":{"ctnNodeIdx":0},"client":{"clientId":"cEXd845DSMw9g6tM5dhy"},"device":{"deviceId":"drc3XdxNtzoucpw9xiRp"}}}"#;
+        let json = r#"{"status":"success","data":{"catenisNode":{"ctnNodeIndex":0},"client":{"clientId":"cEXd845DSMw9g6tM5dhy"},"device":{"deviceId":"drc3XdxNtzoucpw9xiRp"}}}"#;
 
         let retrieve_device_identification_info_response: RetrieveDeviceIdentificationInfoResponse = serde_json::from_str(json).unwrap();
 
@@ -3298,7 +3300,7 @@ mod tests {
             status: String::from("success"),
             data: RetrieveDeviceIdentificationInfoResult {
                 catenis_node: CatenisNodeInfo {
-                    ctn_node_idx: 0,
+                    ctn_node_index: 0,
                     name: None,
                     description: None,
                 },

@@ -219,6 +219,13 @@ impl<E> From<E> for Error
 #[cfg(test)]
 mod tests {
     use std::io;
+    use crate::{
+        test_helper:: {
+            http_server::{
+                HttpServer, HttpServerMode, HttpBody,
+            },
+        },
+    };
 
     use super::*;
 
@@ -230,14 +237,6 @@ mod tests {
         gen_result_io_error()?;
 
         Ok(0)
-    }
-
-    fn simulate_error_http_response() -> Response {
-        reqwest::blocking::get("https://sandbox.catenis.io/bla").unwrap()
-    }
-
-    fn simulate_success_http_response() -> Response {
-        reqwest::blocking::get("https://google.com").unwrap()
     }
 
     #[test]
@@ -316,19 +315,50 @@ mod tests {
 
     #[test]
     fn it_generate_from_http_response() {
-        let res = simulate_error_http_response();
+        // Simulate Catenis API error
+
+        // Start HTTP server in error simulation mode
+        let http_server = HttpServer::new(
+            HttpServerMode::Error(
+                500,
+                Some(HttpBody::from_json(r#"{"status":"error","message":"Internal server error"}"#).unwrap()),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Send (any) HTTP request and get the response
+        let res = reqwest::blocking::get(&format!("http://localhost:{}/", server_port)).unwrap();
 
         assert_eq!(res.status().is_success(), false);
 
         let err = Error::from_http_response(res);
 
         assert_eq!(err.is_api_error(), true);
-        assert_eq!(err.to_string().starts_with("Catenis API error: [404] - <html>\r\n<head><title>404 Not Found</title>"), true);
+        assert_eq!(err.to_string(), "Catenis API error: [500] - Internal server error");
     }
 
     #[test]
     fn it_try_generate_from_http_response() {
-        let res = simulate_success_http_response();
+        // Simulate successful Catenis API response
+
+        // Start HTTP server in success simulation mode
+        let body = r#"{"status":"success","data":{"messageId":"mg9x9vCqYMg9YtKdDwQx"}}"#;
+
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(body).unwrap(),
+            ),
+            "localhost"
+        );
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Send (any) HTTP request and get the response
+        let res = reqwest::blocking::get(&format!("http://localhost:{}/", server_port)).unwrap();
 
         assert_eq!(res.status().is_success(), true);
 
