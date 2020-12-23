@@ -15,7 +15,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use tiny_http::{
-    Server, Request, Response, StatusCode, Header, SslConfig,
+    Server, Request, Response, StatusCode, Header
 };
 use flate2::{
     Compression,
@@ -97,8 +97,6 @@ impl HttpRequest {
 #[derive(Debug, Serialize, Clone, Eq, PartialEq)]
 pub struct PartialHttpRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub secure: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -110,12 +108,6 @@ pub struct PartialHttpRequest {
 
 impl PartialEq<PartialHttpRequest> for HttpRequest {
     fn eq(&self, other: &PartialHttpRequest) -> bool {
-        if let Some(other_secure) = &other.secure {
-            if self.secure != *other_secure {
-                return false;
-            }
-        }
-
         if let Some(other_method) = &other.method {
             if self.method != *other_method {
                 return false;
@@ -210,7 +202,6 @@ pub struct HttpServer {
     mode: HttpServerMode,
     host: String,
     port: u16,
-    secure: bool,
     expected_req: Option<PartialHttpRequest>,
 }
 
@@ -231,15 +222,8 @@ impl HttpServer {
             mode,
             host,
             port,
-            secure: false,
             expected_req: None,
         }
-    }
-
-    pub fn with_secure_connection(mut self) -> Self {
-        self.secure = true;
-
-        self
     }
 
     pub fn with_expected_request(mut self, req: PartialHttpRequest) -> Self {
@@ -255,47 +239,7 @@ impl HttpServer {
     pub fn start(&self) {
         let http_server = self.clone();
 
-        let server = Arc::new(
-            if self.secure {
-                Server::https(
-                    &self.host,
-                    SslConfig {
-                        certificate: r#"-----BEGIN CERTIFICATE-----
-MIICUzCCAbwCCQCBrI63G7tNbzANBgkqhkiG9w0BAQsFADBtMQswCQYDVQQGEwJO
-TzENMAsGA1UECAwETm9uZTENMAsGA1UEBwwETm9uZTENMAsGA1UECgwETm9uZTEN
-MAsGA1UECwwETm9uZTENMAsGA1UEAwwETm9uZTETMBEGCSqGSIb3DQEJARYETm9u
-ZTAgFw0xNTExMjQxNDIwNDVaGA8yMDcwMDgyNzE0MjA0NVowbTELMAkGA1UEBhMC
-Tk8xDTALBgNVBAgMBE5vbmUxDTALBgNVBAcMBE5vbmUxDTALBgNVBAoMBE5vbmUx
-DTALBgNVBAsMBE5vbmUxDTALBgNVBAMMBE5vbmUxEzARBgkqhkiG9w0BCQEWBE5v
-bmUwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAMKwa7v9rjWAcGNieV33ePxA
-b+JtvyY12CuX2nR4jVllGubJhyaqKOpM1TryWo6B9nc7bSe4wO23VBqd4e8WwBW3
-GD0qEuf0qFF/VyUZAZ3qJRqs1HUnBNMTC+BWdFNMzi8NTvnbHXZad5ECuFcQoiCk
-qFPa2ixopNejZTNwNA2tAgMBAAEwDQYJKoZIhvcNAQELBQADgYEAC9rxM6bMSsJH
-b2SSzKh5m/cVJFC9yNWl2w2ge3Hm1TSJv80X3jUUQ2DLnPM3sE6yd1rLfq10qiVc
-SbbWihmmBzx0OJMlo6Eg29m2Q5chV6mzBbfYZcbAE3iceDj6JXJLjJoqHs+39X/R
-IP/a+TP8gZZ8VfvV3Z0tfqT5e8AkvPM=
------END CERTIFICATE-----"#.as_bytes().to_vec(),
-                        private_key: r#"-----BEGIN RSA PRIVATE KEY-----
-MIICXQIBAAKBgQDCsGu7/a41gHBjYnld93j8QG/ibb8mNdgrl9p0eI1ZZRrmyYcm
-qijqTNU68lqOgfZ3O20nuMDtt1QaneHvFsAVtxg9KhLn9KhRf1clGQGd6iUarNR1
-JwTTEwvgVnRTTM4vDU752x12WneRArhXEKIgpKhT2tosaKTXo2UzcDQNrQIDAQAB
-AoGABDx2e6avbbaXu3HfFi5WUZbNWG3u5NPzGi+5ryMYYEOU7ESiTjMRpNd7JEc1
-tTgatslyPJUGjaWZjOK2kc866rRSw38y3bH8AhMdcvpBn27BOoi5RgFrtpwe8CAQ
-rZ7PcXusKDNzhFyaue4a2qUqszcv8nMhOtVE0ZmIrmOUOQECQQDmi0HfzJvE01pk
-bRez6vZHnmsfb8jzR1+yUMPeiIqelESdlApnaT7PIo1JapAfQHOznB6ZPbdnXdyj
-3rkv2zFhAkEA2C+pbzD0EV3AVBaOtFR3dHMQ3MbroPDJ8BJQtYhicbcrlSK48n94
-goUH4hglAl/Pyg/dGLzHIxcSRdkScLVjzQJBANy503YMFc8ac97Wu+zcNrNXL0TH
-5+NUIIE+5mj23ZD6b79W76cWkrYKZK83wYjKUnxSKtGYzzG+IfMa2L7C48ECQQCK
-kxqfrJh2XUsAW6lDzHT5zxw6+MNnWZGH8qWLh43a6JfmM+irgKwltdJUyjdG61WN
-Z1fJGJDpXEuZPEjGuG7tAkAMsCe/44GCLSzSiORACdtyO63Cu6JCz2dqdYtTgJdw
-l+bnX9B8o4lTgltdJWQ/5DAoscNJTtnNBfj4xgxKIkfW
------END RSA PRIVATE KEY-----"#.as_bytes().to_vec(),
-                    }
-                ).unwrap()
-            } else {
-                Server::http(&self.host).unwrap()
-            }
-        );
+        let server = Arc::new(Server::http(&self.host).unwrap());
         let server2 = server.clone();
 
         thread::spawn(move || {
@@ -510,8 +454,8 @@ mod tests {
         //  serialized so we must include all possible results in the assertion statement bellow
         assert!(
             json.eq(r#"{"secure":false,"version":"1.1","method":"GET","path":"/messages","headers":{"host":{"field":"Host","value":"localhost:3000"},"content-type":{"field":"Content-Type","value":"application/json; charset=utf-8"}},"body":""}"#)
-                ||
-                json.eq(r#"{"secure":false,"version":"1.1","method":"GET","path":"/messages","headers":{"content-type":{"field":"Content-Type","value":"application/json; charset=utf-8"},"host":{"field":"Host","value":"localhost:3000"}},"body":""}"#),
+            ||
+            json.eq(r#"{"secure":false,"version":"1.1","method":"GET","path":"/messages","headers":{"content-type":{"field":"Content-Type","value":"application/json; charset=utf-8"},"host":{"field":"Host","value":"localhost:3000"}},"body":""}"#),
             "HttpRequest struct not serialized as expected"
         );
     }
@@ -746,7 +690,6 @@ mod tests {
     #[test]
     fn it_serialize_partial_http_request_no_opts() {
         let part_http_request = PartialHttpRequest {
-            secure: None,
             method: None,
             path: None,
             headers: None,
@@ -761,7 +704,6 @@ mod tests {
     #[test]
     fn it_serialize_partial_http_request_all_opts() {
         let part_http_request = PartialHttpRequest {
-            secure: Some(true),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -784,9 +726,9 @@ mod tests {
         // Note: we cannot guarantee the order in which the entries of the 'headers' field will be
         //  serialized so we must include all possible results in the assertion statement bellow
         assert!(
-            json.eq(r#"{"secure":true,"method":"POST","path":"/messages/log","headers":{"host":null,"content-type":{"field":"Content-Type","value":"application/json; charset=utf-8"}},"body":"{\"message\":\"Test message\"}"}"#)
+            json.eq(r#"{"method":"POST","path":"/messages/log","headers":{"host":null,"content-type":{"field":"Content-Type","value":"application/json; charset=utf-8"}},"body":"{\"message\":\"Test message\"}"}"#)
             ||
-            json.eq(r#"{"secure":true,"method":"POST","path":"/messages/log","headers":{"content-type":{"field":"Content-Type","value":"application/json; charset=utf-8"},"host":null},"body":"{\"message\":\"Test message\"}"}"#),
+            json.eq(r#"{"method":"POST","path":"/messages/log","headers":{"content-type":{"field":"Content-Type","value":"application/json; charset=utf-8"},"host":null},"body":"{\"message\":\"Test message\"}"}"#),
             "PartialHttpRequest struct not serialized as expected"
         );
     }
@@ -815,37 +757,24 @@ mod tests {
         };
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
-            method: None,
-            path: None,
-            headers: None,
-            body: None,
-        };
-
-        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with secure only)");
-
-        let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: None,
             headers: None,
             body: None,
         };
 
-        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with secure and method)");
+        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with method only)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: None,
             body: None,
         };
 
-        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with secure, method and path)");
+        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with method and path)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -858,10 +787,9 @@ mod tests {
             body: None,
         };
 
-        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with secure, method, path and single no data header)");
+        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with method, path and single no data header)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -879,10 +807,9 @@ mod tests {
             body: None,
         };
 
-        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with secure, method, path and all headers)");
+        assert!(http_request == part_http_request, "HTTP request does not match partial HTTP request (with method, path and all headers)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -927,28 +854,6 @@ mod tests {
         };
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(true),
-            method: Some(String::from("POST")),
-            path: Some(String::from("/messages/log")),
-            headers: Some(
-                vec![
-                    String::from("host"),
-                    String::from("content-type"),
-                ].into_iter().zip(vec![
-                    None,
-                    Some(HttpHeader {
-                        field: String::from("Content-Type"),
-                        value: String::from("application/json; charset=utf-8"),
-                    }),
-                ].into_iter()).collect()
-            ),
-            body: Some(String::from(r#"{"message":"Test message"}"#)),
-        };
-
-        assert!(http_request != part_http_request, "HTTP request unexpectedly matches partial HTTP request (wrong secure)");
-
-        let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("GET")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -969,7 +874,6 @@ mod tests {
         assert!(http_request != part_http_request, "HTTP request unexpectedly matches partial HTTP request (wrong method)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/send")),
             headers: Some(
@@ -990,7 +894,6 @@ mod tests {
         assert!(http_request != part_http_request, "HTTP request unexpectedly matches partial HTTP request (wrong path)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -1016,7 +919,6 @@ mod tests {
         assert!(http_request != part_http_request, "HTTP request unexpectedly matches partial HTTP request (extra missing header)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -1035,7 +937,6 @@ mod tests {
         assert!(http_request != part_http_request, "HTTP request unexpectedly matches partial HTTP request (single missing header)");
 
         let part_http_request = PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -1199,56 +1100,6 @@ mod tests {
                 },
             ].into_iter()).collect(),
             body: String::from(r#"{"message":"Test message"}"#),
-        });
-    }
-
-    #[test]
-    fn it_start_server_and_echo_secure_get_http_request() {
-        // Start HTTP server in echo mode
-        let http_server = HttpServer::new(
-            HttpServerMode::Echo, "localhost"
-        ).with_secure_connection();
-        http_server.start();
-
-        let server_port = http_server.get_port();
-
-        // Send an HTTP request and get the response
-        let res = reqwest::blocking::Client::builder()
-            .danger_accept_invalid_certs(true)
-            .build()
-            .unwrap()
-            .get(&format!("https://localhost:{}/messages", server_port))
-            .send()
-            .unwrap();
-
-        // Parse returned HTTP request from response body
-        let res_body = res.text().unwrap();
-        let http_request = HttpRequest::from_json(&res_body).unwrap();
-
-        assert_eq!(http_request, HttpRequest {
-            secure: true,
-            version: String::from("1.1"),
-            method: String::from("GET"),
-            path: String::from("/messages"),
-            headers: vec![
-                String::from("host"),
-                String::from("accept"),
-                String::from("accept-encoding"),
-            ].into_iter().zip(vec![
-                HttpHeader {
-                    field: String::from("host"),
-                    value: format!("localhost:{}", server_port),
-                },
-                HttpHeader {
-                    field: String::from("accept"),
-                    value: String::from("*/*"),
-                },
-                HttpHeader {
-                    field: String::from("accept-encoding"),
-                    value: String::from("gzip"),
-                },
-            ].into_iter()).collect(),
-            body: String::from(""),
         });
     }
 
@@ -1479,7 +1330,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("POST")),
             path: Some(String::from("/messages/log")),
             headers: Some(
@@ -1520,7 +1370,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: Some(false),
             method: Some(String::from("GET")),
             path: Some(String::from("/")),
             headers: None,

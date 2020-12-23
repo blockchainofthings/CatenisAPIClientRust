@@ -1139,7 +1139,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/messages/log", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1207,7 +1206,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/messages/log", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1275,7 +1273,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/messages/log", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1347,7 +1344,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/messages/send", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1420,7 +1416,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/messages/send", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1493,7 +1488,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/messages/send", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1578,7 +1572,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/o3muoTnnD6cXYyarYY38?encoding=utf8", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1648,7 +1641,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/o3muoTnnD6cXYyarYY38?encoding=utf8&async=true", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1720,7 +1712,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/oydotwHEvsZFjrbduoSD?encoding=utf8&dataChunkSize=10", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1793,7 +1784,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/mNAgNarEy6a52X57sXWe/container", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1858,7 +1848,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/mrdwKkhNtDSMjBJSHCsb/container", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -1928,7 +1917,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/oX2mJHwFWp752beHbNDK/container", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2008,7 +1996,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/mNAgNarEy6a52X57sXWe/origin", DEFAULT_API_VERSION.to_string())),
             headers: None,
@@ -2097,7 +2084,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/mNAgNarEy6a52X57sXWe/origin?msgToSign=This+is+only+a+test", DEFAULT_API_VERSION.to_string())),
             headers: None,
@@ -2192,7 +2178,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/oX2mJHwFWp752beHbNDK/origin", DEFAULT_API_VERSION.to_string())),
             headers: None,
@@ -2294,7 +2279,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/oX2mJHwFWp752beHbNDK/origin?msgToSign=This+is+only+a+test", DEFAULT_API_VERSION.to_string())),
             headers: None,
@@ -2380,7 +2364,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/pTZCgjKYEyHfu4rNPWct/progress", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2455,7 +2438,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages/hE6dX6vdtwwDx9tbdtS7/progress", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2557,7 +2539,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/messages?startDate=2020-12-22T00%3A00%3A00.000Z&limit=4", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2672,7 +2653,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/assets/issue", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2738,7 +2718,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/issue", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2802,7 +2781,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/transfer", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2876,7 +2854,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -2941,7 +2918,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/balance", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3019,7 +2995,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/assets/owned?limit=3&skip=38", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3111,7 +3086,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/assets/issued?skip=157", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3199,7 +3173,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/issuance?startDate=2020-12-01T00%3A00%3A00.000Z", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3300,7 +3273,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/assets/aBy2ovnucyWaSB6Tro9x/holders", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3391,7 +3363,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/permission/events", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3500,7 +3471,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/permission/events/receive-msg/rights", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3589,7 +3559,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("POST")),
             path: Some(format!("/api/{}/permission/events/receive-msg/rights", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3695,7 +3664,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/permission/events/receive-msg/rights/d8YpQ7jgPBJEkBrnvp58", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3771,7 +3739,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/devices/self", DEFAULT_API_VERSION.to_string())),
             headers: Some(
@@ -3845,7 +3812,6 @@ mod tests {
             ),
             "localhost"
         ).with_expected_request(PartialHttpRequest {
-            secure: None,
             method: Some(String::from("GET")),
             path: Some(format!("/api/{}/notification/events", DEFAULT_API_VERSION.to_string())),
             headers: Some(
