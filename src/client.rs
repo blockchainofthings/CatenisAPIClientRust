@@ -36,8 +36,8 @@ use base_client::BaseCatenisClient;
 
 #[derive(Debug, Clone)]
 pub struct CatenisClient {
-    api_access_secret: String,
     device_id: String,
+    api_access_secret: String,
     base_api_url: Url,
     is_secure: bool,
     use_compression: bool,
@@ -68,7 +68,7 @@ impl BaseCatenisClient for CatenisClient {
 impl CatenisClient {
     // Definition of public methods
 
-    pub fn new(api_access_secret: &str, device_id: &str) -> Result<Self>
+    pub fn new(device_id: &str, api_access_secret: &str) -> Result<Self>
     {
         let base_url = Url::parse(DEFAULT_BASE_URL)?;
         let api_version = DEFAULT_API_VERSION;
@@ -77,8 +77,8 @@ impl CatenisClient {
         let compress_threshold: usize = 1024;
 
         Ok(CatenisClient {
-            api_access_secret: String::from(api_access_secret),
             device_id: String::from(device_id),
+            api_access_secret: String::from(api_access_secret),
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             is_secure,
             use_compression,
@@ -89,7 +89,7 @@ impl CatenisClient {
         })
     }
 
-    pub fn new_with_options<'a, I>(api_access_secret: &str, device_id: &str, opts: I) -> Result<Self>
+    pub fn new_with_options<'a, I>(device_id: &str, api_access_secret: &str, opts: I) -> Result<Self>
         where
             I: IntoIterator,
             <I as IntoIterator>::Item: Borrow<ClientOptions<'a>>
@@ -153,8 +153,8 @@ impl CatenisClient {
         }
 
         Ok(CatenisClient {
-            api_access_secret: String::from(api_access_secret),
             device_id: String::from(device_id),
+            api_access_secret: String::from(api_access_secret),
             base_api_url: base_url.join(&Self::merge_url_params(API_BASE_URL_PATH, &[("version", api_version.to_string())]))?,
             is_secure,
             use_compression,
@@ -1106,8 +1106,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             "d8YpQ7jgPBJEkBrnvp58",
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1164,8 +1164,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1231,8 +1231,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1298,8 +1298,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1369,8 +1369,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1441,8 +1441,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1513,8 +1513,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1592,8 +1592,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             "d8YpQ7jgPBJEkBrnvp58",
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1661,8 +1661,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             "d8YpQ7jgPBJEkBrnvp58",
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1732,8 +1732,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             "d8YpQ7jgPBJEkBrnvp58",
+            "267a687115b9752f2eec5be849b570b29133528f928868d811bad5e48e97a1d62d432bab44803586b2ac35002ec6f0eeaa98bec79b64f2f69b9cb0935b4df2c4",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1804,8 +1804,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1868,8 +1868,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -1937,8 +1937,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2008,8 +2008,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2096,8 +2096,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2190,8 +2190,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2291,8 +2291,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2384,8 +2384,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2458,8 +2458,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2559,8 +2559,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2678,8 +2678,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2743,8 +2743,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2806,8 +2806,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2874,8 +2874,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -2938,8 +2938,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3015,8 +3015,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3106,8 +3106,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3193,8 +3193,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3293,8 +3293,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3383,8 +3383,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3491,8 +3491,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3584,8 +3584,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3684,8 +3684,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3759,8 +3759,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3832,8 +3832,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3877,8 +3877,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3924,8 +3924,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -3966,8 +3966,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -4013,8 +4013,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host(&format!("localhost:{}", server_port)),
                 ClientOptions::Secure(false),
@@ -4042,8 +4042,8 @@ mod tests {
     fn it_assemble_get_request() {
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
         ).unwrap();
 
         // Get request used for calling 'Read Message' API method
@@ -4065,8 +4065,8 @@ mod tests {
     fn it_assemble_post_request() {
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
         ).unwrap();
 
         // Get request used for calling 'Log Message' API method
@@ -4088,8 +4088,8 @@ mod tests {
     fn it_assemble_post_request_with_compression_not_done() {
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::UseCompression(true),
                 ClientOptions::CompressThreshold(57),
@@ -4115,8 +4115,8 @@ mod tests {
     fn it_assemble_post_request_with_compression() {
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::UseCompression(true),
                 ClientOptions::CompressThreshold(56),
@@ -4142,8 +4142,8 @@ mod tests {
     fn it_assemble_get_ws_request() {
         // Instantiate Catenis API client
         let ctn_client = CatenisClient::new(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
         ).unwrap();
 
         // Get request used to connect to WebSocket notification channel
@@ -4165,8 +4165,8 @@ mod tests {
 
         // Instantiate Catenis API client
         let mut ctn_client = CatenisClient::new_with_options(
-            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             "drc3XdxNtzoucpw9xiRp",
+            "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
             &[
                 ClientOptions::Host("localhost:3000"),
                 ClientOptions::Secure(false),
