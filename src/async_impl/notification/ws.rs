@@ -13,7 +13,7 @@ use tokio_tungstenite::{
         Message,
         protocol::{
             frame::coding::CloseCode,
-            CloseFrame
+            CloseFrame,
         },
         client::{
             IntoClientRequest,

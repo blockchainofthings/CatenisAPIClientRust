@@ -11,7 +11,7 @@ use std::{
 };
 
 #[derive(Debug, Deserialize)]
-pub struct CatenisErrorResponse {
+pub(crate) struct CatenisErrorResponse {
     pub status: String,
     pub message: String,
 }
@@ -193,6 +193,7 @@ impl error::Error for Error {
 
 // Auto-conversion from different Error types
 
+#[doc(hidden)]
 pub trait ConvertibleError {}
 
 // Just add a new line for the desired Error type below

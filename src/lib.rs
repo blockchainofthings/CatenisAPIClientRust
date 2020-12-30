@@ -10,7 +10,6 @@ mod macro_impl;
 
 mod base_client;
 mod client;
-mod error;
 mod date_time;
 
 #[cfg(test)]
@@ -18,16 +17,19 @@ mod test_helper;
 
 pub mod api;
 pub mod notification;
+pub mod error;
 #[cfg(feature = "async")]
 pub mod async_impl;
 
 use error::GenericError;
 
 pub use client::*;
+#[doc(no_inline)]
 pub use error::{
     Error, Result,
 };
 pub use date_time::UtcDateTime;
+#[doc(no_inline)]
 pub use notification::WsNotifyChannel;
 
 pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
@@ -44,7 +46,7 @@ pub enum Environment {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct ApiVersion(u16, u16);
+pub struct ApiVersion(pub u16, pub u16);
 
 impl Display for ApiVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

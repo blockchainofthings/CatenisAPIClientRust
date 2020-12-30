@@ -19,7 +19,6 @@ use tungstenite::{
     Message,
     protocol::{
         frame::coding::CloseCode,
-        CloseFrame
     },
     client::{
         IntoClientRequest, AutoStream,
@@ -38,6 +37,8 @@ use crate::{
     Result, Error, X_BCOT_TIMESTAMP,
     error::GenericError,
 };
+
+pub use tungstenite::protocol::CloseFrame;
 
 pub(crate) const NOTIFY_WS_PROTOCOL: &str = "notify.catenis.io";
 pub(crate) const NOTIFY_WS_CHANNEL_OPEN: &str = "NOTIFICATION_CHANNEL_OPEN";
