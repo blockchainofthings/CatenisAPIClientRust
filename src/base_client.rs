@@ -13,16 +13,19 @@ use time::{
     Date, OffsetDateTime, Duration,
 };
 
+use crate::Result;
+
 const SIGNATURE_VALIDITY_DAYS: u8 = 7;
 const TIME_VARIATION_SECS: u8 = 5;
 
 pub(crate) trait BaseCatenisClient {
-    fn get_api_access_secret_ref(&self) -> &String;
+    fn get_device_id_ref(&self) -> Result<&String>;
+    fn get_api_access_secret_ref(&self) -> Result<&String>;
     fn get_sign_date_ref(&self) -> &Option<Date>;
     fn get_sign_date_mut_ref(&mut self) -> &mut Option<Date>;
     fn get_signing_key_mut_ref(&mut self) -> &mut Option<[u8; 32]>;
 
-    fn check_update_sign_date_and_key(&mut self, now: &OffsetDateTime) {
+    fn check_update_sign_date_and_key(&mut self, now: &OffsetDateTime) -> Result<()> {
         let sign_date = self.get_sign_date_ref();
 
         let need_to_update = if let None = sign_date {
@@ -41,7 +44,7 @@ pub(crate) trait BaseCatenisClient {
             *self.get_sign_date_mut_ref() = Some(now.date());
 
             // Generate new signing key
-            let inner_key = String::from("CTN1") + self.get_api_access_secret_ref().as_str();
+            let inner_key = String::from("CTN1") + self.get_api_access_secret_ref()?.as_str();
             let mut hmac_engine = HmacEngine::<sha256::Hash>::new(inner_key.as_bytes());
             hmac_engine.input(self.get_sign_date_ref().unwrap().format("%Y%m%d").as_bytes());
             let date_key = &Hmac::<sha256::Hash>::from_engine(hmac_engine)[..];
@@ -51,6 +54,8 @@ pub(crate) trait BaseCatenisClient {
 
             *self.get_signing_key_mut_ref() = Some(*Hmac::<sha256::Hash>::from_engine(hmac_engine).as_inner());
         }
+
+        Ok(())
     }
 
     fn merge_url_params<I, K, V>(url_path: &str, params: I) -> String
@@ -137,14 +142,19 @@ mod tests {
 
     #[derive(Clone)]
     struct TestSt {
+        pub device_id: String,
         pub api_access_secret: String,
         pub sign_date: Option<Date>,
         pub signing_key: Option<[u8; 32]>,
     }
 
     impl BaseCatenisClient for TestSt {
-        fn get_api_access_secret_ref(&self) -> &String {
-            &self.api_access_secret
+        fn get_device_id_ref(&self) -> Result<&String> {
+            Ok(&self.device_id)
+        }
+
+        fn get_api_access_secret_ref(&self) -> Result<&String> {
+            Ok(&self.api_access_secret)
         }
 
         fn get_sign_date_ref(&self) -> &Option<Date> {
@@ -163,12 +173,14 @@ mod tests {
     #[test]
     fn it_access_fields() {
         let mut st = TestSt {
+            device_id: String::from("dxyz"),
             api_access_secret: String::from("ABCDEFG"),
             sign_date: Some(time::date!(2020-12-11)),
             signing_key: Some([1_u8; 32]),
         };
 
-        assert_eq!(*st.get_api_access_secret_ref(), st.api_access_secret);
+        assert_eq!(*st.get_device_id_ref().unwrap(), st.device_id);
+        assert_eq!(*st.get_api_access_secret_ref().unwrap(), st.api_access_secret);
         assert_eq!(*st.get_sign_date_ref(), st.sign_date);
 
         // Update sign date
@@ -185,6 +197,7 @@ mod tests {
     #[test]
     fn it_update_none_sign_data() {
         let mut st = TestSt {
+            device_id: String::from("dxyz"),
             api_access_secret: String::from("ABCDEFG"),
             sign_date: None,
             signing_key: None,
@@ -192,7 +205,7 @@ mod tests {
 
         let now: OffsetDateTime = time::date!(2020-12-11).midnight().assume_utc();
 
-        st.check_update_sign_date_and_key(&now);
+        st.check_update_sign_date_and_key(&now).unwrap();
 
         assert_eq!(st.sign_date, Some(now.date()));
         assert!(st.signing_key.is_some(), "field 'signing_key' was not updated as expected");
@@ -201,6 +214,7 @@ mod tests {
     #[test]
     fn it_no_need_update_sign_data() {
         let mut st = TestSt {
+            device_id: String::from("dxyz"),
             api_access_secret: String::from("ABCDEFG"),
             sign_date: Some(time::date!(2020-12-05)),
             signing_key: Some([1_u8; 32]),
@@ -209,7 +223,7 @@ mod tests {
 
         let now: OffsetDateTime = time::date!(2020-12-11).with_time(time::time!(23:59:55)).assume_utc();
 
-        st.check_update_sign_date_and_key(&now);
+        st.check_update_sign_date_and_key(&now).unwrap();
 
         assert_eq!(st.sign_date, orig_st.sign_date);
         assert_eq!(st.signing_key, orig_st.signing_key);
@@ -218,6 +232,7 @@ mod tests {
     #[test]
     fn it_indeed_update_sign_data() {
         let mut st = TestSt {
+            device_id: String::from("dxyz"),
             api_access_secret: String::from("ABCDEFG"),
             sign_date: Some(time::date!(2020-12-04)),
             signing_key: Some([1_u8; 32]),
@@ -226,7 +241,7 @@ mod tests {
 
         let now: OffsetDateTime = time::date!(2020-12-11).with_time(time::time!(23:59:55)).assume_utc();
 
-        st.check_update_sign_date_and_key(&now);
+        st.check_update_sign_date_and_key(&now).unwrap();
 
         assert_ne!(st.sign_date, orig_st.sign_date);
         assert_ne!(st.signing_key, orig_st.signing_key);
