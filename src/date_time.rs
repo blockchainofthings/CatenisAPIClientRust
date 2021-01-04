@@ -94,9 +94,9 @@ impl Into<UtcDateTime> for Date {
     }
 }
 
-impl ToString for UtcDateTime {
-    fn to_string(&self) -> String {
-        format_iso_date(self.inner)
+impl fmt::Display for UtcDateTime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", format_iso_date(self.inner))
     }
 }
 
@@ -235,6 +235,15 @@ mod tests {
         let offset_date_time: OffsetDateTime = date_time.into();
 
         assert_eq!(offset_date_time, time::date!(2020-11-27).with_time(time::time!(07:53:25)).assume_utc());
+    }
+
+    #[test]
+    fn it_format_to_display() {
+        let date_time = UtcDateTime {
+            inner: time::date!(2020-11-27).with_time(time::time!(07:53:25)).assume_utc()
+        };
+
+        assert_eq!(format!("{}", date_time), "2020-11-27T07:53:25.000Z");
     }
 
     #[test]
