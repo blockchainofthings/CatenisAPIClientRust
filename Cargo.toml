@@ -4,6 +4,12 @@ description = "Catenis API client library for the Rust programming language"
 version = "0.1.0"
 authors = ["Cláudio Sá de Castro <claudio@hiades.com.br>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/blockchainofthings/CatenisAPIClientRust"
+documentation = "https://docs.rs/catenis_api_client"
+keywords = ["Catenis", "API", "client", "blockchain"]
+categories = ["api-bindings"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
