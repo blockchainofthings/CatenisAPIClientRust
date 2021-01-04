@@ -16,9 +16,55 @@ pub(crate) struct CatenisErrorResponse {
     pub message: String,
 }
 
+/// Result type returned by Catenis API client functions.
 pub type Result<T> = result::Result<T, Error>;
 pub(crate) type GenericError = Box<dyn error::Error + Send + Sync>;
 
+/// Represents an error that took place when calling a Catenis API client function.
+///
+/// That error can be of two different types:
+///
+/// # Client error
+///
+/// An error that takes place in the client itself, and could be of many different kinds.
+///
+/// # Catenis API error
+///
+/// A response returned by the Catenis API server reporting an error condition while processing the
+/// client request.
+///
+/// ## Example
+///
+/// ```no_run
+/// # use catenis_api_client::{
+/// #     CatenisClient, ClientOptions, Environment, Result,
+/// # };
+/// #
+/// # fn main() -> Result<()> {
+/// # let mut ctn_client = CatenisClient::new_with_options(
+/// #     Some((
+/// #         "drc3XdxNtzoucpw9xiRp",
+/// #         "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+/// #     ).into()),
+/// #     &[
+/// #         ClientOptions::Environment(Environment::Sandbox),
+/// #     ],
+/// # )?;
+/// // Simulate a Catenis API error trying to read a message with an invalid message ID
+/// let error = ctn_client.read_message("xxxxx", None).err().unwrap();
+///
+/// assert!(error.is_api_error());
+///
+/// let api_error = error.api_error_info().unwrap();
+///
+/// assert_eq!(api_error.status_code(), 400);
+/// assert_eq!(api_error.status_message().unwrap(), "Bad Request");
+/// assert_eq!(api_error.catenis_message().unwrap(), "[400] - Invalid message ID");
+///
+/// assert_eq!(error.to_string(), "Catenis API error: [400] - Invalid message ID");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct Error {
     inner: Box<Inner>
@@ -36,6 +82,7 @@ enum ErrorKind {
     Api(ApiErrorInfo),
 }
 
+/// Detailed information about a received Catenis API error.
 #[derive(Debug)]
 pub struct ApiErrorInfo {
     http_status_code: StatusCode,
@@ -44,14 +91,17 @@ pub struct ApiErrorInfo {
 }
 
 impl ApiErrorInfo {
+    /// The received HTTP response's status code.
     pub fn status_code(&self) -> u16 {
         self.http_status_code.as_u16()
     }
 
+    /// The generic reason for the received HTTP response's status code.
     pub fn status_message(&self) -> Option<&str> {
         self.http_status_code.canonical_reason()
     }
 
+    /// The contents of the received HTTP response's body.
     pub fn body_message(&self) -> Option<&str> {
         if let Some(msg) = &self.text_message {
             Some(msg.as_str())
@@ -60,6 +110,7 @@ impl ApiErrorInfo {
         }
     }
 
+    /// The error message returned by the Catenis system.
     pub fn catenis_message(&self) -> Option<&str> {
         if let Some(msg) = &self.ctn_message {
             Some(msg.as_str())
@@ -68,6 +119,7 @@ impl ApiErrorInfo {
         }
     }
 
+    /// The formatted message representing the API error.
     pub fn error_message(&self) -> String {
         let description = if let Some(msg) = self.catenis_message() {
             msg
@@ -147,6 +199,7 @@ impl Error {
         Self::new_api_error(http_status_code, text_message, ctn_message)
     }
 
+    /// Indicates whether this is a Catenis API error.
     pub fn is_api_error(&self) -> bool {
         if let ErrorKind::Api(_) = self.inner.kind {
             true
@@ -155,6 +208,7 @@ impl Error {
         }
     }
 
+    /// Retrieves information about the Catenis API error.
     pub fn api_error_info(&self) -> Option<&ApiErrorInfo> {
         if let ErrorKind::Api(error_info) = &self.inner.kind {
             Some(error_info)

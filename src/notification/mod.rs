@@ -13,70 +13,109 @@ mod ws;
 
 pub use ws::*;
 
+/// Final status for asynchronous message processing
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessProgressDone {
+    /// Total number of bytes of message that had been processed.
     pub bytes_processed: usize,
+    /// Indicates that processing has finished. This should always to `true`.
     pub done: bool,
+    /// Indicates whether message has been successfully processed.
     pub success: bool,
+    /// Processing error. Only returned if processing finished with error.
     pub error: Option<MessageProcessError>,
+    /// Date and time when processing was finalized.
     pub finish_date: UtcDateTime,
 }
 
 // Notification messages
 
+/// *New Message Received* notification data.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NewMessageReceivedNotify {
+    /// The ID of the received message.
     pub message_id: String,
+    /// Identifies the virtual device that sent the received message — the *origin device*.
     pub from: DeviceInfo,
+    /// Date and time when the message has been received.
     pub received_date: UtcDateTime,
 }
 
+/// *Sent Message Read* notification data.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SentMessageReadNotify {
+    /// The ID of the read message.
     pub message_id: String,
+    /// Identifies the virtual device to which the read message had been sent — the *target device*.
     pub to: DeviceInfo,
+    /// Date and time when the message has been read.
     pub read_date: UtcDateTime,
 }
 
+/// *Asset Received* notification data.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetReceivedNotify {
+    /// The ID of the received asset.
     pub asset_id: String,
+    /// The amount of the asset that has been received.
     pub amount: f64,
+    /// Identifies the virtual device that issued the asset — the *issuing device*.
     pub issuer: DeviceInfo,
+    /// Identifies the virtual device that sent or assigned the asset amount — the *sending device*.
     pub from: DeviceInfo,
+    /// Date and time when the asset amount has been received.
     pub received_date: UtcDateTime,
 }
 
+/// *Asset Confirmed* notification data.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetConfirmedNotify {
+    /// The ID of the confirmed asset.
     pub asset_id: String,
+    /// The amount of the asset that has been confirmed.
     pub amount: f64,
+    /// Identifies the virtual device that issued the asset — the *issuing device*.
     pub issuer: DeviceInfo,
+    /// Identifies the virtual device that originally sent or assigned the asset amount — the
+    /// *sending device*.
     pub from: DeviceInfo,
+    /// Date and time when the asset amount has been confirmed.
     pub confirmed_date: UtcDateTime,
 }
 
+/// *Final Message Progress* notification data.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalMessageProgressNotify {
+    /// The ID of the ephemeral message — either a provisional or a cached message — to which this notification refers.
     pub ephemeral_message_id: String,
+    /// The action that was to be performed on the message.
     pub action: MessageAction,
+    /// Final processing status.
     pub progress: MessageProcessProgressDone,
+    /// Result of processing. Only returned if processing finished successfully.
     pub result: Option<MessageProcessSuccess>,
 }
 
+/// A message received through the WebSocket notification channel representing a given Catenis
+/// notification event.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum NotificationMessage {
+    /// *New Message Received* notification message.
     NewMessageReceived(NewMessageReceivedNotify),
+    /// *Sent Message Read* notification message.
     SentMessageRead(SentMessageReadNotify),
+    /// *Asset Received* notification message.
     AssetReceived(AssetReceivedNotify),
+    /// *Asset Confirmed* notification message.
     AssetConfirmed(AssetConfirmedNotify),
+    /// *Final Message Progress* notification message.
     FinalMessageProgress(FinalMessageProgressNotify),
 }
 

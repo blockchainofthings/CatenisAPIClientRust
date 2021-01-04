@@ -47,12 +47,66 @@ fn format_iso_date(date: OffsetDateTime) -> String {
     date.format("%Y-%m-%dT%H:%M:%S") + &format!(".{:0>3}Z", date.millisecond())
 }
 
+/// Represents a date and time in reference to the UTC timezone.
+///
+/// This should be used for manipulating date and time data received from/sent to the Catenis
+/// API.
+///
+/// # Examples
+///
+/// Converting from and to string.
+///
+/// ```
+/// use catenis_api_client::{
+///     UtcDateTime,
+/// };
+///
+/// # fn main() {
+/// let date_time: UtcDateTime = "2020-12-29T10:49:25Z".into();
+///
+/// assert_eq!(date_time.to_string(), "2020-12-29T10:49:25.000Z");
+/// # }
+/// ```
+///
+/// Converting from and to [`time`](https://crates.io/crates/time) crate's data structures.
+///
+/// ```
+/// use time::OffsetDateTime;
+/// use catenis_api_client::{
+///     UtcDateTime,
+/// };
+///
+/// # fn main() {
+/// // Date
+/// let date = time::date!(2020-12-29);
+/// let date_time: UtcDateTime = date.into();
+///
+/// assert_eq!(date_time.to_string(), "2020-12-29T00:00:00.000Z");
+///
+/// // PrimitiveDateTime
+/// let primitive_date_time = time::date!(2020-12-29).with_time(time::time!(10:49:25));
+/// let date_time: UtcDateTime = primitive_date_time.into();
+///
+/// assert_eq!(date_time.to_string(), "2020-12-29T10:49:25.000Z");
+///
+/// // OffsetDateTime
+/// let offset_date_time = time::date!(2020-12-29).with_time(time::time!(10:49:25)).assume_utc();
+/// let date_time: UtcDateTime = offset_date_time.into();
+///
+/// assert_eq!(date_time.to_string(), "2020-12-29T10:49:25.000Z");
+///
+/// let offset_date_time_2: OffsetDateTime = date_time.into();
+///
+/// assert_eq!(offset_date_time_2, offset_date_time);
+/// # }
+/// ```
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct UtcDateTime {
     inner: OffsetDateTime
 }
 
 impl UtcDateTime {
+    /// Indicates whether it contains a valid date and time.
     pub fn is_valid(&self) -> bool {
         self.inner != INVALID_DATE_TIME
     }

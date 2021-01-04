@@ -13,42 +13,69 @@ use serde::{
 
 use crate::date_time::UtcDateTime;
 
+/// Data returned from a successful call to *List Permission Events* API method.
 pub type ListPermissionEventsResult = HashMap<PermissionEvent, String>;
+/// Data returned from a successful call to *Check Effective Permission Right* API method.
 pub type CheckEffectivePermissionRightResult = HashMap<String, PermissionRight>;
+/// Data returned from a successful call to *List Notification Events* API method.
 pub type ListNotificationEventsResult = HashMap<NotificationEvent, String>;
 
+/// Identifies a given virtual device.
 #[derive(Debug, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceId {
+    /// The ID of the device.
     pub id: String,
+    /// Indicates whether the contained ID is a product unique ID. Otherwise, it is a Catenis
+    /// device ID.
+    ///
+    /// Default value: **`false`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_prod_unique_id: Option<bool>,
 }
 
+/// Basic identification information of a virtual device.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
+    /// The device ID.
     pub device_id: String,
+    /// The device's name.
+    ///
+    /// > **Note**: only returned if it is defined for this virtual device.
     pub name: Option<String>,
+    /// The device's product unique ID.
+    ///
+    /// > **Note**: only returned if it is defined for this virtual device.
     pub prod_unique_id: Option<String>,
 }
 
+/// Data structure used to pass message in chunks.
 #[derive(Debug, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChunkedMessage {
+    /// The current message data chunk.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
+    /// Indicates whether this is the final message data chunk.
+    ///
+    /// Default value: **`true`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_final: Option<bool>,
+    /// The continuation token returned for the previously sent message data chunk.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub continuation_token: Option<String>,
 }
 
+/// Text encoding.
 #[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Encoding {
+    /// Text is formatted as UTF-8 characters.
     UTF8,
+    /// Text is base64 encoded.
     Base64,
+    /// Text is in hexadecimal.
     Hex,
 }
 
@@ -62,204 +89,362 @@ impl ToString for Encoding {
     }
 }
 
+/// Storage scheme used for the message.
 #[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Storage {
+    /// Store message in the blockchain transaction if it fits. Otherwise, store message in the
+    /// external repository.
     Auto,
+    /// Store message in the blockchain transaction.
     Embedded,
+    /// Store message in an external repository.
     External,
 }
 
+/// Option settings for logging a message.
 #[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LogMessageOptions {
+    /// The text encoding of the message.
+    ///
+    /// Default value: **`Encoding::UTF8`***
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<Encoding>,
+    /// Indicates whether message should be encrypted before storing it.
+    ///
+    /// Default value: **`true`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encrypt: Option<bool>,
+    /// Indicates whether message should be logged as a Catenis off-chain message.
+    ///
+    /// Default value: **`true`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub off_chain: Option<bool>,
+    /// Identifies where the message should be stored.
+    ///
+    /// Default value: **`Storage::Auto`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub storage: Option<Storage>,
+    /// Indicates whether processing — storage of message to the blockchain — should be done
+    /// asynchronously.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "async")]
     pub async_: Option<bool>,
 }
 
+/// Option settings for sending a message.
 #[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SendMessageOptions {
+    /// The text encoding of the message.
+    ///
+    /// Default value: **`Encoding::UTF8`***
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<Encoding>,
+    /// Indicates whether message should be encrypted before storing it.
+    ///
+    /// Default value: **`true`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encrypt: Option<bool>,
+    /// Indicates whether message should be sent as a Catenis off-chain message.
+    ///
+    /// Default value: **`true`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub off_chain: Option<bool>,
+    /// Identifies where the message should be stored.
+    ///
+    /// Default value: **`Storage::Auto`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub storage: Option<Storage>,
+    /// Indicates whether message should be sent with read confirmation enabled.
+    ///
+    /// Default value: **`false`**.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_confirmation: Option<bool>,
+    /// Indicates whether processing — storage of message to the blockchain — should be done
+    /// asynchronously.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "async")]
     pub async_: Option<bool>,
 }
 
+/// Option settings for reading a message.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ReadMessageOptions {
+    /// The text encoding to be used for the message's contents.
+    ///
+    /// Default value: **`Encoding::UTF8`**.
     pub encoding: Option<Encoding>,
+    /// Continuation token for reading the next message data chunk.
+    ///
+    /// > **Note**: this should be supplied when reading the message in chunks, or when reading
+    /// the message asynchronously after the processing was complete.
     pub continuation_token: Option<String>,
+    /// Size, in bytes, of the largest message data chunk that should be returned.
+    ///
+    /// It must be an integer value between 1,024 (1 KB) and 15,728,640 (15 MB).
     pub data_chunk_size: Option<usize>,
+    /// Indicates whether processing — retrieval of message from the blockchain — should be done
+    /// asynchronously.
     pub async_: Option<bool>,
 }
 
+/// Action used to record a message to the blockchain.
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum RecordMessageAction {
+    /// Record message on the blockchain (for that same virtual device).
     Log,
+    /// Record message on the blockchain directing it to another virtual device.
     Send,
 }
 
+/// Information about a previously recorded message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageInfo {
+    /// Action originally performed on the message.
     pub action: RecordMessageAction,
+    /// Identifies the virtual device that sent the message — the *origin device*.
     pub from: Option<DeviceInfo>,
 }
 
+/// Information about off-chain message container.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OffChainContainer {
+    /// IPFS CID of Catenis off-chain message envelope data structure that holds the off-chain
+    /// message's contents.
     pub cid: String,
 }
 
+/// Information about message container on the blockchain.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainContainer {
+    /// The ID of the blockchain transaction where the message was recorded.
     pub txid: String,
+    /// Indicates whether the blockchain transaction has already been confirmed.
     pub is_confirmed: bool,
 }
 
+/// Information about message container on the IPFS external storage.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct IpfsStorage {
+    /// The hash used to reference the message on IPFS.
     pub ipfs: String,
 }
 
+/// Information about the virtual device's owner.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceOwner {
+    /// The name of the company that owns the virtual device.
+    ///
+    /// > **Note**: only returned if it is defined for that virtual device.
     pub company: Option<String>,
+    /// The name of the company's contact.
+    ///
+    /// > **Note**: only returned if both a company and a contact are defined for that virtual
+    /// device.
     pub contact: Option<String>,
+    /// The name of the person who owns the virtual device.
+    ///
+    /// > **Note**: only returned if a contact without a company is defined for that virtual device.
     pub name: Option<String>,
+    /// List of Internet domains owned by this company or person.
     pub domains: Option<Vec<String>>,
 }
 
+/// Information about the virtual device that recorded a message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OriginDeviceInfo {
+    /// Virtual device's blockchain address used to generate the Catenis message transaction.
     pub address: String,
+    /// The device ID.
     pub device_id: String,
+    /// The device's name.
+    ///
+    /// > **Note**: only returned if it is defined for this virtual device.
     pub name: Option<String>,
+    /// The device's product unique ID.
+    ///
+    /// > **Note**: only returned if it is defined for this virtual device.
     pub prod_unique_id: Option<String>,
+    /// Virtual device owner info.
     pub owned_by: DeviceOwner,
 }
 
+/// Type of a Catenis message transaction.
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq)]
 pub enum TransactionType {
+    /// Send message transaction.
     #[serde(rename = "Send Message")]
     SendMessage,
+    /// Log message transaction.
     #[serde(rename = "Log Message")]
     LogMessage,
+    /// Settle off-chain messages transaction.
     #[serde(rename = "Settle Off-Chain Messages")]
     SettleOffChainMessages,
 }
 
+/// Reference to the batch document used to settle off-chain messages on the blockchain.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchDocRef {
+    /// Content ID (CID) of batch document on IPFS.
     pub cid: String,
 }
 
+/// Information about the blockchain transaction used to record a message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainTransaction {
+    /// Blockchain transaction ID.
     pub txid: String,
+    /// Catenis message transaction type.
     #[serde(rename = "type")]
     pub type_: TransactionType,
+    /// Off-chain message batch document reference.
+    ///
+    /// > **Note**: only returned for off-chain messages.
     pub batch_doc: Option<BatchDocRef>,
+    /// Origin device info.
+    ///
+    /// > **Note**: not returned for off-chain messages.
     pub origin_device: Option<OriginDeviceInfo>,
 }
 
+/// Type of an off-chain message.
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq)]
 pub enum OffChainMessageType {
+    /// Message sent to another virtual device.
     #[serde(rename = "Send Message")]
     SendMessage,
+    /// Message logged (for that same virtual device).
     #[serde(rename = "Log Message")]
     LogMessage,
 }
 
+/// Information about the off-chain message envelope used to record an off-chain message.
+///
+/// **Note**: the off-chain message is recorded on IPFS.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OffChainMsgEnvelope {
+    /// Content ID (CID) of off-chain message envelope on IPFS.
     pub cid: String,
+    /// Off-chain message type.
     #[serde(rename = "type")]
     pub type_: OffChainMessageType,
+    /// Origin device info.
     pub origin_device: Option<OffChainOriginDeviceInfo>,
 }
 
+/// Data used to proof the origin of a message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProofInfo {
+    /// User provided text message for which the signature was generated.
     pub message: String,
+    /// Base64-encoded message's signature generated using origin device's private key.
     pub signature: String,
 }
 
+/// Information about the virtual device that recorded an off-chain message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OffChainOriginDeviceInfo {
+    /// Hex-encoded hash of virtual device's public key used to generate the off-chain message
+    /// envelope.
     pub pub_key_hash: String,
+    /// The device ID.
     pub device_id: String,
+    /// The device's name.
+    ///
+    /// > **Note**: only returned if it is defined for this virtual device.
     pub name: Option<String>,
+    /// The device's product unique ID.
+    ///
+    /// > **Note**: only returned if it is defined for this virtual device.
     pub prod_unique_id: Option<String>,
+    /// Virtual device owner info.
     pub owned_by: DeviceOwner,
 }
 
+/// Information about an error processing a message asynchronously.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessError {
+    /// Numeric code — equivalent to an HTML status code — of the error that took place while
+    /// processing the message.
     pub code: u16,
+    /// Text describing the error that took place while processing the message.
     pub message: String
 }
 
+/// Report on the asynchronous processing status of a message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessProgress {
+    /// Total number of bytes of message that had already been processed.
     pub bytes_processed: usize,
+    /// Indicates whether processing has been finished.
     pub done: bool,
+    /// Indicates whether the message has been successfully processed.
+    ///
+    /// > **Note**: only returned if processing has already been finished.
     pub success: Option<bool>,
+    /// Processing error.
+    ///
+    /// > **Note**: only returned if processing finished with error.
     pub error: Option<MessageProcessError>,
+    /// Date and time when processing was finalized.
+    ///
+    /// > **Note**: only returned if processing has already been finished.
     pub finish_date: Option<UtcDateTime>,
 }
 
+/// The successful outcome of the asynchronous processing of a message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageProcessSuccess {
+    /// The message ID.
+    ///
+    /// When logging or sending a message, this is the resulting ID of the message.
+    ///
+    /// When reading a message, it is the ID of the message being read.
     pub message_id: String,
+    /// The token that should be used to complete the read of the message.
+    ///
+    /// > **Note**: only returned if reading a message.
     pub continuation_token: Option<String>,
 }
 
+/// Action to be asynchronously processed on a message.
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageAction {
+    /// Record message on the blockchain (for that same virtual device).
     Log,
+    /// Record message on the blockchain directing it to another virtual device.
     Send,
+    /// Reads a previously recorded message from the blockchain.
     Read,
 }
 
+/// Option for filtering messages according to the action performed on it.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum MessageActionOption {
+    /// Logged messages.
     Log,
+    /// Sent messages.
     Send,
+    /// Any message action.
     Any,
 }
 
@@ -273,10 +458,16 @@ impl ToString for MessageActionOption {
     }
 }
 
+/// Option for filtering messages according to its direction.
+///
+/// > **Note**: it only applies to sent messages.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum MessageDirectionOption {
+    /// Messages sent to the virtual device making the query.
     Inbound,
+    /// Messages sent from the virtual device making the query.
     Outbound,
+    /// Any message direction.
     Any,
 }
 
@@ -290,10 +481,16 @@ impl ToString for MessageDirectionOption {
     }
 }
 
+/// Option for filtering messages according to its read state.
+///
+/// > **Note**: it only applies to sent messages.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum MessageReadStateOption {
+    /// Messages already read.
     Read,
+    /// Messages not yet read.
     Unread,
+    /// Any message read state.
     Any,
 }
 
@@ -307,99 +504,187 @@ impl ToString for MessageReadStateOption {
     }
 }
 
+/// Options for filtering messages.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ListMessagesOptions {
+    /// Message action.
     pub action: Option<MessageActionOption>,
+    /// Message direction.
     pub direction: Option<MessageDirectionOption>,
+    /// Devices that sent the message.
+    ///
+    /// > **Note**: it only applies to inbound sent messages.
     pub from_devices: Option<Vec<DeviceId>>,
+    /// Devices to which the message was sent.
+    ///
+    /// > **Note**: it only applies to outbound sent messages.
     pub to_devices: Option<Vec<DeviceId>>,
+    /// Message read state.
     pub read_state: Option<MessageReadStateOption>,
+    /// Start of time period within which message was:
+    ///
+    /// - *logged*, for logged messages.
+    /// - *sent*, for outbound sent messages.
+    /// - *received*, for inbound sent messages.
     pub start_date: Option<UtcDateTime>,
+    /// End of time period within which message was:
+    ///
+    /// - *logged*, for logged messages.
+    /// - *sent*, for outbound sent messages.
+    /// - *received*, for inbound sent messages.
     pub end_date: Option<UtcDateTime>,
+    /// Maximum number of messages that should be returned.
+    ///
+    /// > **Note**: must be a positive integer value not greater than 500.
     pub limit: Option<u16>,
+    /// Number of messages that should be skipped.
+    ///
+    /// > **Note**: must be a non-negative (includes zero) integer value.
     pub skip: Option<usize>,
 }
 
+/// Direction of a sent message.
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageDirection {
+    /// Message sent to the virtual device making the query.
     Inbound,
+    /// Message sent from the virtual device making the query.
     Outbound,
 }
 
+/// Information about a listed message.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageEntry {
+    /// The message ID.
     pub message_id: String,
+    /// Action originally performed on the message.
     pub action: RecordMessageAction,
+    /// Message direction.
+    ///
+    /// > **Note**: only returned for sent messages.
     pub direction: Option<MessageDirection>,
+    /// The virtual device that sent the message.
+    ///
+    /// > **Note**: only returned for sent messages.
     pub from: Option<DeviceInfo>,
+    /// The virtual device to which the message was sent.
+    ///
+    /// > **Note**: only returned for sent messages.
     pub to: Option<DeviceInfo>,
+    /// Indicates whether the message had been sent with read confirmation enabled.
+    ///
+    /// > **Note**: only returned for outbound sent messages.
     pub read_confirmation_enabled: Option<bool>,
+    /// Indicates whether the message had already been read.
+    ///
+    /// **Note**: not returned for outbound sent messages sent with read confirmation not enabled.
     pub read: Option<bool>,
+    /// Date and time when the message was:
+    ///
+    /// - *logged*, for logged messages.
+    /// - *sent*, for outbound sent messages.
+    /// - *received*, for inbound sent messages.
     pub date: UtcDateTime,
 }
 
+/// Properties for a new asset.
 #[derive(Debug, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NewAssetInfo {
+    /// The asset name.
     pub name: String,
+    /// A description about the asset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Indicates whether more units of the asset can be issued at another time.
     pub can_reissue: bool,
-    pub decimal_places: u8
+    /// The maximum number of decimal places that can be used to specify a fractional amount
+    /// of the asset.
+    pub decimal_places: u8,
 }
 
+/// Balance of an asset.
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalance {
+    /// Current balance of that asset held by the virtual device that makes the request.
     pub total: f64,
+    /// The amount from the balance that is not yet confirmed.
     pub unconfirmed: f64,
 }
 
+/// Information about an owned asset.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnedAssetEntry {
+    /// The asset ID.
     pub asset_id: String,
+    /// The asset balance.
     pub balance: AssetBalance,
 }
 
+/// Information about an issued asset.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct IssuedAssetEntry {
+    /// The asset ID.
     pub asset_id: String,
+    /// Current total balance of that asset in existence.
     pub total_existent_balance: f64,
 }
 
+/// Information about an asset issuance event.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetIssuanceEventEntry {
+    /// The issued amount of the asset.
     pub amount: f64,
+    /// The virtual device to which the issued amount was assigned.
     pub holding_device: DeviceInfo,
+    /// Date and time when the asset was issued.
     pub date: UtcDateTime,
 }
 
+/// Information about an asset holder.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetHolderEntry {
+    /// The virtual device that holds an amount of the asset.
     pub holder: DeviceInfo,
+    /// The asset balance.
     pub balance: AssetBalance,
 }
 
+/// Catenis permission event.
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PermissionEvent {
+    /// The *receive-notify-new-msg* permission event.
     ReceiveNotifyNewMsg,
+    /// The *receive-notify-msg-read* permission event.
     ReceiveNotifyMsgRead,
+    /// The *receive-notify-asset-of* permission event.
     ReceiveNotifyAssetOf,
+    /// The *receive-notify-asset-from* permission event.
     ReceiveNotifyAssetFrom,
+    /// The *receive-notify-confirm-asset-of* permission event.
     ReceiveNotifyConfirmAssetOf,
+    /// The *receive-notify-confirm-asset-from* permission event.
     ReceiveNotifyConfirmAssetFrom,
+    /// The *send-read-msg-confirm* permission event.
     SendReadMsgConfirm,
+    /// The *receive-msg* permission event.
     ReceiveMsg,
+    /// The *disclose-main-props* permission event.
     DiscloseMainProps,
+    /// The *disclose-identify-info* permission event.
     DiscloseIdentityInfo,
+    /// The *receive-asset-of* permission event.
     ReceiveAssetOf,
+    /// The *receive-asset-from* permission event.
     ReceiveAssetFrom,
+    /// Any unknown permission event.
     UnknownEvent(String),
 }
 
@@ -470,84 +755,136 @@ impl Into<PermissionEvent> for &str {
     }
 }
 
+/// Defined permission right.
 #[derive(Debug, Deserialize, Serialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum PermissionRight {
+    /// Permission granted.
     Allow,
+    /// Permission not granted.
     Deny,
 }
 
+/// Current permission rights set for different entities.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionRightsSetting {
+    /// List of entities to which permission is granted.
+    ///
+    /// > **Note**: the entity is identified by its ID: either a Catenis node index, or a client ID.
     pub allow: Option<Vec<String>>,
+    /// List of entities to which permission is not granted.
+    ///
+    /// > **Note**: the entity is identified by its ID: either a Catenis node index, or a client ID.
     pub deny: Option<Vec<String>>,
 }
 
+/// Current permission rights set for different virtual devices.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DevicePermissionRightsSetting {
+    /// List of virtual devices to which permission is granted.
     pub allow: Option<Vec<DeviceInfo>>,
+    /// List of virtual devices to which permission is not granted.
     pub deny: Option<Vec<DeviceInfo>>,
 }
 
+/// Data for changing permission rights for different entities.
 #[derive(Debug, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionRightsUpdate {
+    /// List of entities to which permission should be granted.
+    ///
+    /// > **Note**: the entity is identified by its ID: either a Catenis node index, or a client ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allow: Option<Vec<String>>,
+    /// List of entities to which permission should not be granted.
+    ///
+    /// > **Note**: the entity is identified by its ID: either a Catenis node index, or a client ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deny: Option<Vec<String>>,
+    /// List of entities from which permission should be cleared.
+    ///
+    /// > **Note**: the entity is identified by its ID: either a Catenis node index, or a client ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub none: Option<Vec<String>>,
 }
 
+/// Data for changing permission rights for different virtual devices.
 #[derive(Debug, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DevicePermissionRightsUpdate {
+    /// List of virtual devices to which permission should be granted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allow: Option<Vec<DeviceId>>,
+    /// List of virtual devices to which permission should not be granted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deny: Option<Vec<DeviceId>>,
+    /// List of virtual devices from which permission should be cleared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub none: Option<Vec<DeviceId>>,
 }
 
+/// Data for changing permissions rights at all levels.
 #[derive(Debug, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AllPermissionRightsUpdate {
+    /// Updated permission right at system level.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<PermissionRight>,
+    /// Updated permission rights at Catenis node level.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub catenis_node: Option<PermissionRightsUpdate>,
+    /// Updated permission rights at client level.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client: Option<PermissionRightsUpdate>,
+    /// Updated permission rights at device level.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<DevicePermissionRightsUpdate>,
 }
 
+/// Identification information of a Catenis node.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CatenisNodeInfo {
+    /// The Catenis node index.
     pub ctn_node_index: u32,
+    /// The Catenis node's name.
+    ///
+    /// > **Note**: only returned if it is defined for this Catenis node.
     pub name: Option<String>,
+    /// A description about the Catenis node.
+    ///
+    /// > **Note**: only returned if it is defined for this Catenis node.
     pub description: Option<String>,
 }
 
+/// Identification information of a client.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientInfo {
+    /// The client ID.
     pub client_id: String,
+    /// The client's name.
+    ///
+    /// > **Note**: only returned if it is defined for this client.
     pub name: Option<String>,
 }
 
+/// Catenis notification event.
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NotificationEvent {
+    /// The *new-msg-received* notification event.
     NewMsgReceived,
+    /// The *sent-msg-read* notification event.
     SentMsgRead,
+    /// The *asset-received* notification event.
     AssetReceived,
+    /// The *asset-confirmed* notification event.
     AssetConfirmed,
+    /// The *final-msg-progress* notification event.
     FinalMsgProgress,
+    /// Any unknown notification event.
     UnknownEvent(String),
 }
 
@@ -606,148 +943,248 @@ impl Into<NotificationEvent> for &str {
 
 // Result (used in response) data structures
 
+/// Data returned from a successful call to *Log Message* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LogMessageResult {
+    /// Token to be used when sending the following message data chunk.
+    ///
+    /// > **Note**: only returned if passing message in chunks, and last message data chunk was
+    /// not final.
     pub continuation_token: Option<String>,
+    /// The ID of the logged message.
+    ///
+    /// > **Note**: only returned after message is fully processed.
     pub message_id: Option<String>,
+    /// The ID of the provisional message.
+    ///
+    /// > **Note**: only returned if doing asynchronous processing, and the whole message's
+    /// contents was passed.
     pub provisional_message_id: Option<String>,
 }
 
+/// Data returned from a successful call to *Send Message* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SendMessageResult {
+    /// Token to be used when sending the following message data chunk.
+    ///
+    /// > **Note**: only returned if passing message in chunks, and last message data chunk was not
+    /// final.
     pub continuation_token: Option<String>,
+    /// The ID of the sent message.
+    ///
+    /// > **Note**: only returned after message is fully processed.
     pub message_id: Option<String>,
+    /// The ID of the provisional message.
+    ///
+    /// > **Note**: only returned if doing asynchronous processing, and the whole message's
+    /// contents was passed.
     pub provisional_message_id: Option<String>,
 }
 
+/// Data returned from a successful call to *Read Message* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadMessageResult {
+    /// Info about the read message.
+    ///
+    /// > **Note**: when reading the message in chunks, this will be returned only for the first
+    /// read message data chunk.
     pub msg_info: Option<MessageInfo>,
+    /// The message's contents formatted using the specified text encoding.
+    ///
+    /// > **Note**: when reading the message in chunks, this corresponds to a message data chunk.
     pub msg_data: Option<String>,
+    /// Token to be used when requesting the following message data chunk.
+    ///
+    /// > **Note**: only returned if reading the message in chunks and the whole message's contents
+    /// was not read yet.
     pub continuation_token: Option<String>,
+    /// The cached message ID.
+    ///
+    /// > **Note**: only returned if doing asynchronous processing.
     pub cached_message_id: Option<String>,
 }
 
+/// Data returned from a successful call to *Retrieve Message Container* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveMessageContainerResult {
+    /// Off-chain message container info.
     pub off_chain: Option<OffChainContainer>,
+    /// Blockchain container info.
     pub blockchain: Option<BlockchainContainer>,
+    /// External storage container info.
     pub external_storage: Option<IpfsStorage>,
 }
 
+/// Data returned from a successful call to *Retrieve Message Origin* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveMessageOriginResult {
+    /// Blockchain transaction info.
+    ///
+    /// > **Note**: not returned for off-chain messages not yet settled to the blockchain.
     pub tx: Option<BlockchainTransaction>,
+    /// Off-chain message envelope info.
     pub off_chain_msg_envelope: Option<OffChainMsgEnvelope>,
+    /// Message origin proof.
     pub proof: Option<ProofInfo>,
 }
 
+/// Data returned from a successful call to *Retrieve Message Progress* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveMessageProgressResult {
+    /// The action that was to be asynchronously performed on the message.
     pub action: MessageAction,
+    /// Asynchronous processing status.
     pub progress: MessageProcessProgress,
+    /// Asynchronous processing result.
     pub result: Option<MessageProcessSuccess>,
 }
 
+/// Data returned from a successful call to *List Messages* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListMessagesResult {
+    /// List of returned messages.
     pub messages: Vec<MessageEntry>,
+    /// Number of returned messages.
     pub msg_count: u16,
+    /// Indicates whether there are more messages that satisfy the search criteria yet to be
+    /// returned.
     pub has_more: bool,
 }
 
+/// Data returned from a successful call to *Issue Asset* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueAssetResult {
+    /// ID of the newly issued asset.
     pub asset_id: String,
 }
 
+/// Data returned from a successful call to *Reissue Asset* API method.
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReissueAssetResult {
+    /// Total balance of the asset in existence after specified amount was issued.
     pub total_existent_balance: f64,
 }
 
+/// Data returned from a successful call to *Transfer Asset* API method.
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferAssetResult {
+    /// Total balance of the asset still held by the virtual device that made the transfer.
     pub remaining_balance: f64,
 }
 
+/// Data returned from a successful call to *Retrieve Asset Info* API method.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveAssetInfoResult {
+    /// The asset ID.
     pub asset_id: String,
+    /// The asset name.
     pub name: String,
+    /// Description about the asset.
     pub description: String,
+    /// Indicates whether more units of this asset can be issued.
     pub can_reissue: bool,
+    /// The maximum number of decimal places that can be used to specify a fractional amount of
+    /// this asset.
     pub decimal_places: u8,
+    /// The virtual device that originally issued this asset.
     pub issuer: DeviceInfo,
+    /// Current total balance of the asset in existence.
     pub total_existent_balance: f64,
 }
 
+/// Data returned from a successful call to *Get Asset Balance* API method.
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GetAssetBalanceResult {
+    /// Current balance of the asset held by the virtual device that made the request.
     pub total: f64,
+    /// The amount from the balance that is not yet confirmed.
     pub unconfirmed: f64,
 }
 
+/// Data returned from a successful call to *List Owned Assets* API method.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListOwnedAssetsResult {
+    /// List of returned owned assets.
     pub owned_assets: Vec<OwnedAssetEntry>,
+    /// Indicates whether there are more entries that have not been included in the returned list.
     pub has_more: bool,
 }
 
+/// Data returned from a successful call to *List Issued Assets* API method.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListIssuedAssetsResult {
+    /// List of returned issued assets.
     pub issued_assets: Vec<IssuedAssetEntry>,
+    /// Indicates whether there are more entries that have not been included in the returned list.
     pub has_more: bool,
 }
 
+/// Data returned from a successful call to *Retrieve Asset Issuance History* API method.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveAssetIssuanceHistoryResult {
+    /// List of returned asset issuance events.
     pub issuance_events: Vec<AssetIssuanceEventEntry>,
+    /// Indicates whether there are more asset issuance events that satisfy the search criteria
+    /// yet to be returned.
     pub has_more: bool,
 }
 
+/// Data returned from a successful call to *List Asset Holders* API method.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAssetHoldersResult {
+    /// List of returned asset holders.
     pub asset_holders: Vec<AssetHolderEntry>,
+    /// Indicates whether there are more entries that have not been included in the returned list.
     pub has_more: bool,
 }
 
+/// Data returned from a successful call to *Retrieve Permission Rights* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrievePermissionRightsResult {
+    /// Permission right set at the system level.
     pub system: PermissionRight,
+    /// Permission rights set at the Catenis node level.
     pub catenis_node: Option<PermissionRightsSetting>,
+    /// Permission rights set at the client level.
     pub client: Option<PermissionRightsSetting>,
+    /// Permission rights set at the device level.
     pub device: Option<DevicePermissionRightsSetting>,
 }
 
+/// Data returned from a successful call to *Set Permission Rights* API method.
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SetPermissionRightsResult {
+    /// Indicates that permission rights have been successfully set.
     pub success: bool,
 }
 
+/// Data returned from a successful call to *Retrieve Device Identification Info* API method.
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrieveDeviceIdentificationInfoResult {
+    /// Information about the Catenis node where the virtual device's client is defined.
     pub catenis_node: CatenisNodeInfo,
+    /// Information about the client to which the virtual device belongs.
     pub client: ClientInfo,
+    /// Information about the virtual device itself.
     pub device: DeviceInfo,
 }
 

@@ -73,14 +73,26 @@ pub(crate) enum NotifyEventHandlerMessage {
     NotifyEvent(WsNotifyChannelEvent),
 }
 
+/// Events to monitor on a WebSocket notification channel.
 #[derive(Debug)]
 pub enum WsNotifyChannelEvent {
+    /// An error took place in the WebSocket notification channel.
     Error(Error),
+    /// The underlying WebSocket connection has been closed, and thus the notification channel
+    /// itself too. It may contain the returned close code and reason.
     Close(Option<CloseFrame<'static>>),
+    /// WebSocket notification channel successfully open and ready to send notifications.
     Open,
+    /// New incoming notification.
     Notify(NotificationMessage)
 }
 
+/// Represents a Catenis WebSocket notification channel.
+///
+/// This is used to receive notifications from the Catenis system.
+///
+/// An instance of this object should be obtained from a [`CatenisClient`] object via its
+/// [`new_ws_notify_channel`](CatenisClient::new_ws_notify_channel) method.
 #[derive(Debug, Clone)]
 pub struct WsNotifyChannel{
     pub(crate) api_client: CatenisClient,
@@ -97,6 +109,67 @@ impl WsNotifyChannel {
         }
     }
 
+    /// Open the WebSocket notification channel setting up a handler to monitor the activity on
+    /// that channel.
+    ///
+    /// > **Note**: this is a non-blocking operation. The provided handler function is run on its
+    /// own thread.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::sync::{Arc, Mutex};
+    /// use catenis_api_client::{
+    ///     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::NotificationEvent,
+    ///     notification::WsNotifyChannelEvent,
+    /// };
+    ///
+    /// # fn main() -> Result<()> {
+    /// let ctn_client = CatenisClient::new_with_options(
+    ///     Some((
+    ///         "drc3XdxNtzoucpw9xiRp",
+    ///         concat!(
+    ///             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    ///             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    ///         ),
+    ///     ).into()),
+    ///     &[
+    ///         ClientOptions::Environment(Environment::Sandbox),
+    ///     ],
+    /// )?;
+    ///
+    /// // Instantiate WebSocket notification channel object for New Message Received
+    /// //  notification event
+    /// let notify_channel = Arc::new(Mutex::new(
+    ///     ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived)
+    /// ));
+    /// let notify_channel_2 = notify_channel.clone();
+    ///
+    /// let notify_thread = notify_channel.lock().unwrap()
+    ///     // Open WebSocket notification channel and monitor events on it
+    ///     .open(move |event: WsNotifyChannelEvent| {
+    ///         let notify_channel = notify_channel_2.lock().unwrap();
+    ///
+    ///         match event {
+    ///             WsNotifyChannelEvent::Error(err) => {
+    ///                 println!("WebSocket notification channel error: {:?}", err);
+    ///             },
+    ///             WsNotifyChannelEvent::Open => {
+    ///                 println!("WebSocket notification channel open");
+    ///             },
+    ///             WsNotifyChannelEvent::Close(close_info) => {
+    ///                 println!("WebSocket notification channel closed: {:?}", close_info);
+    ///             },
+    ///             WsNotifyChannelEvent::Notify(notify_msg) => {
+    ///                 println!("Received notification (new message read): {:?}", notify_msg);
+    ///                 notify_channel.close();
+    ///             },
+    ///         }
+    ///     })?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn open<F>(&mut self, notify_event_handler: F) -> Result<JoinHandle<()>>
         where
             F: Fn(WsNotifyChannelEvent) + Send + 'static
@@ -440,6 +513,7 @@ impl WsNotifyChannel {
         }))
     }
 
+    /// Close the WebSocket notification channel.
     pub fn close(&self) {
         if let Some(tx) = &self.tx {
             // Send command to notification event handler thread to close WebSocket

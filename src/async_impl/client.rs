@@ -31,6 +31,7 @@ use crate::api::*;
 use base_client::BaseCatenisClient;
 use super::notification::WsNotifyChannel;
 
+/// Represents an asynchronous Catenis API client.
 #[derive(Debug, Clone)]
 pub struct CatenisClient {
     device_credentials: Option<DeviceCredentials>,
@@ -76,6 +77,10 @@ impl BaseCatenisClient for CatenisClient {
 impl CatenisClient {
     // Definition of public methods
 
+    /// Instantiate a new asynchronous Catenis API client object with default option settings.
+    ///
+    /// > **Note**: if no virtual device credentials are passed, the resulting client object should
+    /// only be used to call **public** API methods.
     pub fn new(device_credentials: Option<DeviceCredentials>) -> Result<Self>
     {
         let base_url = Url::parse(DEFAULT_BASE_URL)?;
@@ -96,6 +101,10 @@ impl CatenisClient {
         })
     }
 
+    /// Instantiate a new asynchronous Catenis API client object with alternative option settings.
+    ///
+    /// > **Note**: if no virtual device credentials are passed, the resulting client object should
+    /// only be used to call **public** API methods.
     pub fn new_with_options<'a, I>(device_credentials: Option<DeviceCredentials>, opts: I) -> Result<Self>
         where
             I: IntoIterator,
@@ -171,10 +180,83 @@ impl CatenisClient {
         })
     }
 
+    /// Instantiate a new asynchronous WebSocket notification channel object for a given Catenis
+    /// notification event.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use catenis_api_client::{
+    ///     async_impl,
+    ///     ClientOptions, Environment, Result,
+    ///     api::NotificationEvent,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// let ctn_client = async_impl::CatenisClient::new_with_options(
+    ///     Some((
+    ///         "drc3XdxNtzoucpw9xiRp",
+    ///         concat!(
+    ///             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    ///             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    ///         ),
+    ///     ).into()),
+    ///     &[
+    ///         ClientOptions::Environment(Environment::Sandbox),
+    ///     ],
+    /// )?;
+    ///
+    /// // Instantiate asynchronous WebSocket notification channel object for New Message Received
+    /// //  notification event
+    /// let notify_channel = ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new_ws_notify_channel(&self, notify_event: NotificationEvent) -> WsNotifyChannel {
         WsNotifyChannel::new(self, notify_event)
     }
 
+    /// Call *Log Message* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.log_message(
+    ///     "My message",
+    ///     Some(LogMessageOptions {
+    ///         encoding: Some(Encoding::UTF8),
+    ///         encrypt: Some(true),
+    ///         off_chain: Some(true),
+    ///         storage: Some(Storage::Auto),
+    ///         async_: None,
+    ///     }),
+    /// ).await?;
+    ///
+    /// println!("ID of logged message: {}", result.message_id.unwrap());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn log_message(&mut self, message: &str, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
         let body = LogMessageRequest {
             message: String::from(message),
@@ -193,6 +275,69 @@ impl CatenisClient {
         Ok(Self::parse_response::<LogMessageResponse>(res).await?.data)
     }
 
+    /// Call *Log Message* API method passing message in chunks.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let message = [
+    ///     "First part of message",
+    ///     "Second part of message",
+    ///     "Third and last part of message"
+    /// ];
+    ///
+    /// for idx in 0..message.len() {
+    ///     let mut continuation_token = None;
+    ///
+    ///     let result = ctn_client.log_chunked_message(
+    ///         ChunkedMessage {
+    ///             data: Some(String::from(message[idx])),
+    ///             is_final: Some(idx < message.len() - 1),
+    ///             continuation_token: if let Some(token) = &continuation_token {
+    ///                 Some(String::from(token))
+    ///             } else {
+    ///                 None
+    ///             },
+    ///         },
+    ///         Some(LogMessageOptions {
+    ///             encoding: Some(Encoding::UTF8),
+    ///             encrypt: Some(true),
+    ///             off_chain: Some(true),
+    ///             storage: Some(Storage::Auto),
+    ///             async_: None,
+    ///         }),
+    ///     ).await?;
+    ///
+    ///     if let Some(token) = result.continuation_token {
+    ///         continuation_token = Some(token);
+    ///     } else {
+    ///         println!("ID of logged message: {}", result.message_id.unwrap());
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn log_chunked_message(&mut self, message: ChunkedMessage, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
         let body = LogChunkedMessageRequest {
             message,
@@ -211,6 +356,52 @@ impl CatenisClient {
         Ok(Self::parse_response::<LogMessageResponse>(res).await?.data)
     }
 
+    /// Call *Send Message* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.send_message(
+    ///     "My message",
+    ///     DeviceId {
+    ///         id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+    ///         is_prod_unique_id: None,
+    ///     },
+    ///     Some(SendMessageOptions {
+    ///         encoding: Some(Encoding::UTF8),
+    ///         encrypt: Some(true),
+    ///         off_chain: Some(true),
+    ///         storage: Some(Storage::Auto),
+    ///         read_confirmation: Some(true),
+    ///         async_: None,
+    ///     }),
+    /// ).await?;
+    ///
+    /// println!("ID of sent message: {}", result.message_id.unwrap());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn send_message(&mut self, message: &str, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
         let body = SendMessageRequest {
             message: String::from(message),
@@ -230,6 +421,74 @@ impl CatenisClient {
         Ok(Self::parse_response::<SendMessageResponse>(res).await?.data)
     }
 
+    /// Call *Send Message* API method passing message in chunks.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let message = [
+    ///     "First part of message",
+    ///     "Second part of message",
+    ///     "Third and last part of message"
+    /// ];
+    ///
+    /// for idx in 0..message.len() {
+    ///     let mut continuation_token = None;
+    ///
+    ///     let result = ctn_client.send_chunked_message(
+    ///         ChunkedMessage {
+    ///             data: Some(String::from(message[idx])),
+    ///             is_final: Some(idx < message.len() - 1),
+    ///             continuation_token: if let Some(token) = &continuation_token {
+    ///                 Some(String::from(token))
+    ///             } else {
+    ///                 None
+    ///             },
+    ///         },
+    ///         DeviceId {
+    ///             id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+    ///             is_prod_unique_id: None,
+    ///         },
+    ///         Some(SendMessageOptions {
+    ///             encoding: Some(Encoding::UTF8),
+    ///             encrypt: Some(true),
+    ///             off_chain: Some(true),
+    ///             storage: Some(Storage::Auto),
+    ///             read_confirmation: Some(true),
+    ///             async_: None,
+    ///         }),
+    ///     ).await?;
+    ///
+    ///     if let Some(token) = result.continuation_token {
+    ///         continuation_token = Some(token);
+    ///     } else {
+    ///         println!("ID of sent message: {}", result.message_id.unwrap());
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn send_chunked_message(&mut self, message: ChunkedMessage, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
         let body = SendChunkedMessageRequest {
             message,
@@ -249,6 +508,46 @@ impl CatenisClient {
         Ok(Self::parse_response::<SendMessageResponse>(res).await?.data)
     }
 
+    /// Call *Read Message* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.read_message(
+    ///     "o3muoTnnD6cXYyarYY38",
+    ///     Some(ReadMessageOptions {
+    ///         encoding: Some(Encoding::UTF8),
+    ///         continuation_token: None,
+    ///         data_chunk_size: None,
+    ///         async_: None,
+    ///     }),
+    /// ).await?;
+    ///
+    /// println!("Read message: {}", result.msg_data.unwrap());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn read_message(&mut self, message_id: &str, options: Option<ReadMessageOptions>) -> Result<ReadMessageResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -301,6 +600,50 @@ impl CatenisClient {
         Ok(Self::parse_response::<ReadMessageResponse>(res).await?.data)
     }
 
+    /// Call *Retrieve Message Container* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_message_container(
+    ///     "o3muoTnnD6cXYyarYY38",
+    /// ).await?;
+    ///
+    /// if let Some(off_chain) = result.off_chain {
+    ///     println!("IPFS CID of Catenis off-chain message envelope: {}", off_chain.cid);
+    /// }
+    ///
+    /// if let Some(blockchain) = result.blockchain {
+    ///     println!("ID of blockchain transaction containing the message: {}", blockchain.txid);
+    /// }
+    ///
+    /// if let Some(external_storage) = result.external_storage {
+    ///     println!("IPFS reference to message: {}", external_storage.ipfs);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_message_container(&mut self, message_id: &str) -> Result<RetrieveMessageContainerResult> {
         let req = self.get_request(
             "messages/:message_id/container",
@@ -315,6 +658,47 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrieveMessageContainerResponse>(res).await?.data)
     }
 
+    /// Call *Retrieve Message Origin* API method.
+    ///
+    /// > **Note**: this is a public API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     None,
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_message_origin(
+    ///     "o3muoTnnD6cXYyarYY38",
+    ///     Some("Any text to be signed"),
+    /// ).await?;
+    ///
+    /// if let Some(tx) = result.tx {
+    ///     println!("Catenis message transaction info: {:?}", tx);
+    /// }
+    ///
+    /// if let Some(off_chain_msg_env) = result.off_chain_msg_envelope {
+    ///     println!("Off-chain message envelope info: {:?}", off_chain_msg_env);
+    /// }
+    ///
+    /// if let Some(proof) = result.proof {
+    ///     println!("Origin proof info: {:?}", proof);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_message_origin(&self, message_id: &str, msg_to_sign: Option<&str>) -> Result<RetrieveMessageOriginResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -341,6 +725,57 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrieveMessageOriginResponse>(res).await?.data)
     }
 
+    /// Call *Retrieve Message Progress* API method.
+    ///
+    /// **Note**: this method should be passed an *ephemeral message ID*: either a *provisional
+    /// message ID* or a *cached message ID*.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_message_progress(
+    ///     "pTZCgjKYEyHfu4rNPWct",
+    /// ).await?;
+    ///
+    /// println!("Number of bytes processed so far: {}", result.progress.bytes_processed);
+    ///
+    /// if result.progress.done {
+    ///     if let Some(true) = result.progress.success {
+    ///         // Get result
+    ///         println!("Asynchronous processing result: {:?}", result.result.unwrap());
+    ///     } else {
+    ///         // Process error
+    ///         let error = result.progress.error.unwrap();
+    ///
+    ///         println!("Asynchronous processing error: [{}] - {}", error.code, error.message);
+    ///     }
+    /// } else {
+    ///     // Asynchronous processing not done yet. Continue pooling
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_message_progress(&mut self, message_id: &str) -> Result<RetrieveMessageProgressResult> {
         let req = self.get_request(
             "messages/:message_id/progress",
@@ -355,6 +790,56 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrieveMessageProgressResponse>(res).await?.data)
     }
 
+    /// Call *List Messages* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_messages(
+    ///     Some(ListMessagesOptions {
+    ///         action: Some(MessageActionOption::Send),
+    ///         direction: Some(MessageDirectionOption::Inbound),
+    ///         from_devices: None,
+    ///         to_devices: None,
+    ///         read_state: Some(MessageReadStateOption::Unread),
+    ///         start_date: Some("2020-12-22T00:00:00Z".into()),
+    ///         end_date: None,
+    ///         limit: None,
+    ///         skip: None,
+    ///     }),
+    /// ).await?;
+    ///
+    /// if result.msg_count > 0 {
+    ///     println!("Returned messages: {:?}", result.messages);
+    ///
+    ///     if result.has_more {
+    ///         println!("Not all messages have been returned");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn list_messages(&mut self, options: Option<ListMessagesOptions>) -> Result<ListMessagesResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -484,6 +969,47 @@ impl CatenisClient {
         Ok(Self::parse_response::<ListMessagesResponse>(res).await?.data)
     }
 
+    /// Call *Issue Asset* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.issue_asset(
+    ///     NewAssetInfo {
+    ///         name: String::from("XYZ001"),
+    ///         description: Some(String::from("My first test asset")),
+    ///         can_reissue: true,
+    ///         decimal_places: 2,
+    ///     },
+    ///     1_500.0,
+    ///     None,
+    /// ).await?;
+    ///
+    /// println!("ID of newly issued asset: {}", result.asset_id);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn issue_asset(&mut self, asset_info: NewAssetInfo, amount: f64, holding_device: Option<DeviceId>) -> Result<IssueAssetResult> {
         let body = IssueAssetRequest {
             asset_info,
@@ -503,6 +1029,45 @@ impl CatenisClient {
         Ok(Self::parse_response::<IssueAssetResponse>(res).await?.data)
     }
 
+    /// Call *Reissue Asset* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.reissue_asset(
+    ///     "aBy2ovnucyWaSB6Tro9x",
+    ///     650.25,
+    ///     Some(DeviceId {
+    ///         id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+    ///         is_prod_unique_id: None,
+    ///     }),
+    /// ).await?;
+    ///
+    /// println!("Total existent asset balance (after issuance): {}", result.total_existent_balance);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn reissue_asset(&mut self, asset_id: &str, amount: f64, holding_device: Option<DeviceId>) -> Result<ReissueAssetResult> {
         let body = ReissueAssetRequest {
             amount,
@@ -523,6 +1088,45 @@ impl CatenisClient {
         Ok(Self::parse_response::<ReissueAssetResponse>(res).await?.data)
     }
 
+    /// Call *Transfer Asset* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.transfer_asset(
+    ///     "aBy2ovnucyWaSB6Tro9x",
+    ///     50.75,
+    ///     DeviceId {
+    ///         id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+    ///         is_prod_unique_id: None,
+    ///     },
+    /// ).await?;
+    ///
+    /// println!("Remaining asset balance: {}", result.remaining_balance);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn transfer_asset(&mut self, asset_id: &str, amount: f64, receiving_device: DeviceId) -> Result<TransferAssetResult> {
         let body = TransferAssetRequest {
             amount,
@@ -543,6 +1147,40 @@ impl CatenisClient {
         Ok(Self::parse_response::<TransferAssetResponse>(res).await?.data)
     }
 
+    /// Call *Retrieve Asset Info* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_asset_info(
+    ///     "aBy2ovnucyWaSB6Tro9x",
+    /// ).await?;
+    ///
+    /// println!("Asset info: {:?}", result);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_asset_info(&mut self, asset_id: &str) -> Result<RetrieveAssetInfoResult> {
         let req = self.get_request(
             "assets/:asset_id",
@@ -557,6 +1195,41 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrieveAssetInfoResponse>(res).await?.data)
     }
 
+    /// Call *Get Asset Balance* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.get_asset_balance(
+    ///     "aBy2ovnucyWaSB6Tro9x",
+    /// ).await?;
+    ///
+    /// println!("Current asset balance: {}", result.total);
+    /// println!("Amount not yet confirmed: {}", result.unconfirmed);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn get_asset_balance(&mut self, asset_id: &str) -> Result<GetAssetBalanceResult> {
         let req = self.get_request(
             "assets/:asset_id/balance",
@@ -571,6 +1244,49 @@ impl CatenisClient {
         Ok(Self::parse_response::<GetAssetBalanceResponse>(res).await?.data)
     }
 
+    /// Call *List Owned Assets* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_owned_assets(
+    ///     Some(200),
+    ///     Some(0),
+    /// ).await?;
+    ///
+    /// for owned_asset in result.owned_assets {
+    ///     println!("Asset ID: {}", owned_asset.asset_id);
+    ///     println!(" - current asset balance: {}", owned_asset.balance.total);
+    ///     println!(" - amount not yet confirmed: {}\n", owned_asset.balance.unconfirmed);
+    /// }
+    ///
+    /// if result.has_more {
+    ///     println!("Not all owned assets have been returned");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn list_owned_assets(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListOwnedAssetsResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -605,6 +1321,48 @@ impl CatenisClient {
         Ok(Self::parse_response::<ListOwnedAssetsResponse>(res).await?.data)
     }
 
+    /// Call *List Issued Assets* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_issued_assets(
+    ///     Some(200),
+    ///     Some(0),
+    /// ).await?;
+    ///
+    /// for issued_asset in result.issued_assets {
+    ///     println!("Asset ID: {}", issued_asset.asset_id);
+    ///     println!(" - total existent balance: {}\n", issued_asset.total_existent_balance);
+    /// }
+    ///
+    /// if result.has_more {
+    ///     println!("Not all issued assets have been returned");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn list_issued_assets(&mut self, limit: Option<u16>, skip: Option<usize>) -> Result<ListIssuedAssetsResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -639,6 +1397,55 @@ impl CatenisClient {
         Ok(Self::parse_response::<ListIssuedAssetsResponse>(res).await?.data)
     }
 
+    /// Call *Retrieve Asset Issuance History* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_asset_issuance_history(
+    ///     "aBy2ovnucyWaSB6Tro9x",
+    ///     Some("2020-12-01T00:00:00Z".into()),
+    ///     None,
+    ///     Some(200),
+    ///     Some(0),
+    /// ).await?;
+    ///
+    /// for issuance_events in result.issuance_events {
+    ///     println!("Issuance date: {}", issuance_events.date);
+    ///     println!(" - issued amount: {}", issuance_events.amount);
+    ///     println!(
+    ///         " - device to which issued amount had been assigned: {:?}\n",
+    ///         issuance_events.holding_device
+    ///     );
+    /// }
+    ///
+    /// if result.has_more {
+    ///     println!("Not all asset issuance events have been returned");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_asset_issuance_history(
         &mut self,
         asset_id: &str,
@@ -696,6 +1503,54 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrieveAssetIssuanceHistoryResponse>(res).await?.data)
     }
 
+    /// Call *List Asset Holders* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_asset_holders(
+    ///     "aBy2ovnucyWaSB6Tro9x",
+    ///     Some(200),
+    ///     Some(0),
+    /// ).await?;
+    ///
+    /// for asset_holders in result.asset_holders {
+    ///     println!("Asset holder ID: {}", asset_holders.holder.device_id);
+    ///     println!(" - detailed holder info: {:?}", asset_holders.holder);
+    ///     println!(
+    ///         " - amount of asset currently held by device: {}",
+    ///         asset_holders.balance.total
+    ///     );
+    ///     println!(" - amount not yet confirmed: {}\n", asset_holders.balance.unconfirmed);
+    /// }
+    ///
+    /// if result.has_more {
+    ///     println!("Not all asset holders have been returned");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn list_asset_holders(&mut self, asset_id: &str, limit: Option<u16>, skip: Option<usize>) -> Result<ListAssetHoldersResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -732,6 +1587,40 @@ impl CatenisClient {
         Ok(Self::parse_response::<ListAssetHoldersResponse>(res).await?.data)
     }
 
+    /// Call *List Permission Events* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_permission_events().await?;
+    ///
+    /// for (event, description) in result {
+    ///     println!("Permission event: {} - {}", event.to_string(), description);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn list_permission_events(&mut self) -> Result<ListPermissionEventsResult> {
         let req = self.get_request(
             "permission/events",
@@ -744,6 +1633,76 @@ impl CatenisClient {
         Ok(Self::parse_response::<ListPermissionEventsResponse>(res).await?.data)
     }
 
+    /// Call *Retrieve Permission Rights* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_permission_rights(
+    ///     PermissionEvent::ReceiveMsg,
+    /// ).await?;
+    ///
+    /// println!("Default (system) permission right: {:?}", result.system);
+    ///
+    /// if let Some(rights_setting) = result.catenis_node {
+    ///     if let Some(catenis_node_idxs) = rights_setting.allow {
+    ///         println!(
+    ///             "Index of Catenis nodes to which permission is granted: {:?}",
+    ///             catenis_node_idxs
+    ///         );
+    ///     }
+    ///
+    ///     if let Some(catenis_node_idxs) = rights_setting.deny {
+    ///         println!(
+    ///             "Index of Catenis nodes to which permission is not granted: {:?}",
+    ///             catenis_node_idxs
+    ///         );
+    ///     }
+    /// }
+    ///
+    /// if let Some(rights_setting) = result.client {
+    ///     if let Some(client_ids) = rights_setting.allow {
+    ///         println!("ID of clients to which permission is granted: {:?}", client_ids);
+    ///     }
+    ///
+    ///     if let Some(client_ids) = rights_setting.deny {
+    ///         println!("ID of clients to which permission is not granted: {:?}", client_ids);
+    ///     }
+    /// }
+    ///
+    /// if let Some(rights_setting) = result.device {
+    ///     if let Some(devices) = rights_setting.allow {
+    ///         println!("Devices to which permission is granted: {:?}", devices);
+    ///     }
+    ///
+    ///     if let Some(devices) = rights_setting.deny {
+    ///         println!("Devices to which permission is not granted: {:?}", devices);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_permission_rights(&mut self, event: PermissionEvent) -> Result<RetrievePermissionRightsResult> {
         let req = self.get_request(
             "permission/events/:event_name/rights",
@@ -758,6 +1717,72 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrievePermissionRightsResponse>(res).await?.data)
     }
 
+    /// Call *Set Permission Rights* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.set_permission_rights(
+    ///     PermissionEvent::ReceiveMsg,
+    ///     AllPermissionRightsUpdate {
+    ///         system: Some(PermissionRight::Deny),
+    ///         catenis_node: Some(PermissionRightsUpdate {
+    ///             allow: Some(vec![
+    ///                 String::from("self"),
+    ///             ]),
+    ///             deny: None,
+    ///             none: None,
+    ///         }),
+    ///         client: Some(PermissionRightsUpdate {
+    ///             allow: Some(vec![
+    ///                 String::from("self"),
+    ///                 String::from("c3gBoX45xk3yAmenyDRD"),
+    ///             ]),
+    ///             deny: None,
+    ///             none: None,
+    ///         }),
+    ///         device: Some(DevicePermissionRightsUpdate {
+    ///             allow: None,
+    ///             deny: Some(vec![
+    ///                 DeviceId {
+    ///                     id: String::from("self"),
+    ///                     is_prod_unique_id: None,
+    ///                 },
+    ///                 DeviceId {
+    ///                     id: String::from("ABCD001"),
+    ///                     is_prod_unique_id: Some(true),
+    ///                 },
+    ///             ]),
+    ///             none: None,
+    ///         }),
+    ///     },
+    /// ).await?;
+    ///
+    /// println!("Permission rights successfully set");
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn set_permission_rights(&mut self, event: PermissionEvent, rights: AllPermissionRightsUpdate) -> Result<SetPermissionRightsResult> {
         let body_json = serde_json::to_string(&rights)?;
         let req = self.post_request(
@@ -774,6 +1799,46 @@ impl CatenisClient {
         Ok(Self::parse_response::<SetPermissionRightsResponse>(res).await?.data)
     }
 
+    /// Call *Check Effective Permission Right* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.check_effective_permission_right(
+    ///     PermissionEvent::ReceiveMsg,
+    ///     DeviceId {
+    ///         id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+    ///         is_prod_unique_id: None,
+    ///     },
+    /// ).await?;
+    ///
+    /// let (device_id, right) = result.iter().next().unwrap();
+    ///
+    /// println!("Effective right for device {}: {:?}", device_id, right);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn check_effective_permission_right(&mut self, event: PermissionEvent, device: DeviceId) -> Result<CheckEffectivePermissionRightResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -804,6 +1869,45 @@ impl CatenisClient {
         Ok(Self::parse_response::<CheckEffectivePermissionRightResponse>(res).await?.data)
     }
 
+    /// Call *Retrieve Device Identification Info* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_device_identification_info(
+    ///     DeviceId {
+    ///         id: String::from("self"),
+    ///         is_prod_unique_id: None,
+    ///     },
+    /// ).await?;
+    ///
+    /// println!("Device's Catenis node ID info: {:?}", result.catenis_node);
+    /// println!("Device's client ID info: {:?}", result.client);
+    /// println!("Device's own ID info: {:?}", result.device);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_device_identification_info(&mut self, device: DeviceId) -> Result<RetrieveDeviceIdentificationInfoResult> {
         // Prepare query parameters
         let mut params_vec = Vec::new();
@@ -833,6 +1937,40 @@ impl CatenisClient {
         Ok(Self::parse_response::<RetrieveDeviceIdentificationInfoResponse>(res).await?.data)
     }
 
+    /// Call *List Notification Events* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_notification_events().await?;
+    ///
+    /// for (event, description) in result {
+    ///     println!("Notification event: {} - {}", event.to_string(), description);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn list_notification_events(&mut self) -> Result<ListNotificationEventsResult> {
         let req = self.get_request(
             "notification/events",

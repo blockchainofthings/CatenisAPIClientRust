@@ -47,6 +47,13 @@ use crate::{
     }
 };
 
+/// Represents an asynchronous Catenis WebSocket notification channel.
+///
+/// This is used to receive notifications from the Catenis system, in an asynchronous way.
+///
+/// An instance of this object should be obtained from an asynchronous [`CatenisClient`](crate::async_impl::CatenisClient)
+/// object via its [`new_ws_notify_channel`](crate::async_impl::CatenisClient::new_ws_notify_channel)
+/// method.
 #[derive(Debug, Clone)]
 pub struct WsNotifyChannel{
     pub(crate) api_client: CatenisClient,
@@ -63,6 +70,81 @@ impl WsNotifyChannel {
         }
     }
 
+    /// Open the WebSocket notification channel setting up a handler to monitor the activity on
+    /// that channel.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::sync::{Arc, Mutex};
+    /// use catenis_api_client::{
+    ///     async_impl,
+    ///     ClientOptions, Environment, Result,
+    ///     api::NotificationEvent,
+    ///     notification::WsNotifyChannelEvent,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// let ctn_client = async_impl::CatenisClient::new_with_options(
+    ///     Some((
+    ///         "drc3XdxNtzoucpw9xiRp",
+    ///         concat!(
+    ///             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    ///             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    ///         ),
+    ///     ).into()),
+    ///     &[
+    ///         ClientOptions::Environment(Environment::Sandbox),
+    ///     ],
+    /// )?;
+    /// 
+    /// // Instantiate asynchronous WebSocket notification channel object for New Message Received
+    /// //  notification event
+    /// let notify_channel = Arc::new(Mutex::new(
+    ///     ctn_client.new_ws_notify_channel(NotificationEvent::NewMsgReceived)
+    /// ));
+    /// let notify_channel_2 = notify_channel.clone();
+    /// 
+    /// let notify_task;
+    /// 
+    /// {
+    ///     notify_task = notify_channel.lock().unwrap()
+    ///         // Open WebSocket notification channel and monitor events on it
+    ///         .open(move |event: WsNotifyChannelEvent| {
+    ///             let mut notify_channel = (&*notify_channel_2.lock().unwrap()).clone();
+    /// 
+    ///             tokio::spawn(async move {
+    ///                 match event {
+    ///                     WsNotifyChannelEvent::Error(err) => {
+    ///                         println!(
+    ///                             "WebSocket notification channel error: {:?}",
+    ///                              err
+    ///                         );
+    ///                     },
+    ///                     WsNotifyChannelEvent::Open => {
+    ///                         println!("WebSocket notification channel open");
+    ///                     },
+    ///                     WsNotifyChannelEvent::Close(close_info) => {
+    ///                         println!(
+    ///                             "WebSocket notification channel closed: {:?}",
+    ///                             close_info
+    ///                         );
+    ///                     },
+    ///                     WsNotifyChannelEvent::Notify(notify_msg) => {
+    ///                         println!(
+    ///                             "Received notification (new message read): {:?}",
+    ///                             notify_msg
+    ///                         );
+    ///                         notify_channel.close().await;
+    ///                     },
+    ///                 }
+    ///             });
+    ///         }).await?;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn open<F>(&mut self, notify_event_handler: F) -> Result<JoinHandle<()>>
         where
             F: Fn(WsNotifyChannelEvent) + Send + 'static
@@ -384,6 +466,7 @@ impl WsNotifyChannel {
         }))
     }
 
+    /// Close the WebSocket notification channel.
     pub async fn close(&mut self) {
         if let Some(tx) = &mut self.tx {
             // Send command to notification event handler async task to close
