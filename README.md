@@ -57,7 +57,7 @@ runtime.
 To activate asynchronous processing, the **`async`** feature must be enabled.
 
 ```toml
-catenis_api_client = { version = "0.1", features = ["async"] }
+catenis_api_client = { version = "1.0", features = ["async"] }
 ```
 
 The asynchronous version of the client can then be accessed from the [`async_impl`](https://docs.rs/catenis_api_client/~1.0/catenis_api_client/async_impl/index.html)
