@@ -11,7 +11,9 @@ documentation = "https://docs.rs/catenis_api_client"
 keywords = ["Catenis", "API", "client", "blockchain"]
 categories = ["api-bindings"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.metadata.docs.rs]
+# Make sure that documentation includes all available features
+all-features = true
 
 [features]
 async = [
