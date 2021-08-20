@@ -108,7 +108,7 @@ pub enum Storage {
 pub struct LogMessageOptions {
     /// The text encoding of the message.
     ///
-    /// Default value: **`Encoding::UTF8`***
+    /// Default value: **`Encoding::UTF8`**
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<Encoding>,
     /// Indicates whether message should be encrypted before storing it.
@@ -139,7 +139,7 @@ pub struct LogMessageOptions {
 pub struct SendMessageOptions {
     /// The text encoding of the message.
     ///
-    /// Default value: **`Encoding::UTF8`***
+    /// Default value: **`Encoding::UTF8`**
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<Encoding>,
     /// Indicates whether message should be encrypted before storing it.
@@ -579,7 +579,7 @@ pub struct MessageEntry {
     pub read_confirmation_enabled: Option<bool>,
     /// Indicates whether the message had already been read.
     ///
-    /// **Note**: not returned for outbound sent messages sent with read confirmation not enabled.
+    /// > **Note**: not returned for outbound sent messages sent with read confirmation not enabled.
     pub read: Option<bool>,
     /// Date and time when the message was:
     ///
