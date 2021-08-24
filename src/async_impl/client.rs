@@ -884,13 +884,13 @@ impl CatenisClient {
                 }
 
                 if ids.len() > 0 {
-                    from_device_ids = String::from(ids.join(","));
+                    from_device_ids = ids.join(",");
 
                     params_vec.push(("fromDeviceIds", from_device_ids.as_str()));
                 }
 
                 if prod_unique_ids.len() > 0 {
-                    from_device_prod_unique_ids = String::from(prod_unique_ids.join(","));
+                    from_device_prod_unique_ids = prod_unique_ids.join(",");
 
                     params_vec.push(("fromDeviceProdUniqueIds", from_device_prod_unique_ids.as_str()));
                 }
@@ -911,13 +911,13 @@ impl CatenisClient {
                 }
 
                 if ids.len() > 0 {
-                    to_device_ids = String::from(ids.join(","));
+                    to_device_ids = ids.join(",");
 
                     params_vec.push(("toDeviceIds", to_device_ids.as_str()));
                 }
 
                 if prod_unique_ids.len() > 0 {
-                    to_device_prod_unique_ids = String::from(prod_unique_ids.join(","));
+                    to_device_prod_unique_ids = prod_unique_ids.join(",");
 
                     params_vec.push(("toDeviceProdUniqueIds", to_device_prod_unique_ids.as_str()));
                 }
