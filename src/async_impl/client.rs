@@ -5272,7 +5272,7 @@ mod tests {
         ).unwrap();
 
         assert_eq!(req.method().to_string(), "GET");
-        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/oNXszDazhuq4utktSMMi?encoding=utf8");
+        assert_eq!(req.url().to_string(), format!("https://catenis.io/api/{}/messages/oNXszDazhuq4utktSMMi?encoding=utf8", DEFAULT_API_VERSION.to_string()));
     }
 
     #[tokio::test]
@@ -5294,7 +5294,7 @@ mod tests {
         ).await.unwrap();
 
         assert_eq!(req.method().to_string(), "POST");
-        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/log");
+        assert_eq!(req.url().to_string(), format!("https://catenis.io/api/{}/messages/log", DEFAULT_API_VERSION.to_string()));
         assert_eq!(req.headers().get(CONTENT_TYPE).unwrap(), "application/json; charset=utf-8");
         assert!(!req.headers().contains_key(CONTENT_ENCODING), "Request contains unexpected Content-Encoding HTTP header");
         assert_eq!(req.body().unwrap().as_bytes().unwrap(), b"{\"message\":\"Test message\",\"options\":{\"encoding\":\"utf8\"}}");
@@ -5323,7 +5323,7 @@ mod tests {
         ).await.unwrap();
 
         assert_eq!(req.method().to_string(), "POST");
-        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/log");
+        assert_eq!(req.url().to_string(), format!("https://catenis.io/api/{}/messages/log", DEFAULT_API_VERSION.to_string()));
         assert_eq!(req.headers().get(CONTENT_TYPE).unwrap(), "application/json; charset=utf-8");
         assert!(!req.headers().contains_key(CONTENT_ENCODING), "Request contains unexpected Content-Encoding HTTP header");
         assert_eq!(req.body().unwrap().as_bytes().unwrap(), b"{\"message\":\"Test message\",\"options\":{\"encoding\":\"utf8\"}}");
@@ -5352,7 +5352,7 @@ mod tests {
         ).await.unwrap();
 
         assert_eq!(req.method().to_string(), "POST");
-        assert_eq!(req.url().to_string(), "https://catenis.io/api/0.10/messages/log");
+        assert_eq!(req.url().to_string(), format!("https://catenis.io/api/{}/messages/log", DEFAULT_API_VERSION.to_string()));
         assert_eq!(req.headers().get(CONTENT_TYPE).unwrap(), "application/json; charset=utf-8");
         assert_eq!(req.headers().get(CONTENT_ENCODING).unwrap(), "deflate");
         assert_eq!(req.body().unwrap().as_bytes().unwrap(), b"\x78\x9c\x01\x38\x00\xc7\xff\x7b\x22\x6d\x65\x73\x73\x61\x67\x65\x22\x3a\x22\x54\x65\x73\x74\x20\x6d\x65\x73\x73\x61\x67\x65\x22\x2c\x22\x6f\x70\x74\x69\x6f\x6e\x73\x22\x3a\x7b\x22\x65\x6e\x63\x6f\x64\x69\x6e\x67\x22\x3a\x22\x75\x74\x66\x38\x22\x7d\x7d\x2e\x4c\x13\x83");
@@ -5377,7 +5377,7 @@ mod tests {
         ).unwrap();
 
         assert_eq!(req.method().to_string(), "GET");
-        assert_eq!(req.url().to_string(), "wss://catenis.io/api/0.10/notify/ws/new-msg-received");
+        assert_eq!(req.url().to_string(), format!("wss://catenis.io/api/{}/notify/ws/new-msg-received", DEFAULT_API_VERSION.to_string()));
     }
 
     #[tokio::test]
@@ -5394,9 +5394,9 @@ mod tests {
             &[
                 ClientOptions::Host("localhost:3000"),
                 ClientOptions::Secure(false),
+                ClientOptions::Version(ApiVersion(0, 10)),
             ],
         ).unwrap();
-
 
         // Get request used for calling 'Log Message' API method
         let mut req = ctn_client.post_request(
