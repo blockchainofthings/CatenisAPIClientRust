@@ -29,10 +29,16 @@ fn main() -> Result<()> {
     for idx in 0..result.asset_holders.len() {
         let asset_holder = &result.asset_holders[idx];
 
-        println!("Asset holder #{}:", idx + 1);
-        println!(" - device holding an amount of the asset: {:?}", asset_holder.holder);
-        println!(" - amount of asset currently held by device: {}", asset_holder.balance.total);
-        println!(" - amount not yet confirmed: {}", asset_holder.balance.unconfirmed);
+        if let Some(holder) = &asset_holder.holder {
+            println!("Asset holder #{}:", idx + 1);
+            println!(" - device holding an amount of the asset: {:?}", holder);
+            println!(" - amount of asset currently held by device: {}", asset_holder.balance.total);
+            println!(" - amount not yet confirmed: {}", asset_holder.balance.unconfirmed);
+        } else {
+            println!("Migrated asset:");
+            println!(" - total migrated amount: {}", asset_holder.balance.total);
+            println!(" - amount not yet confirmed: {}", asset_holder.balance.unconfirmed);
+        }
     }
 
     if result.has_more {

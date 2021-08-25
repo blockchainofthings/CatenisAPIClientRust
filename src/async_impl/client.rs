@@ -1500,14 +1500,20 @@ impl CatenisClient {
     ///     Some(0),
     /// ).await?;
     ///
-    /// for asset_holders in result.asset_holders {
-    ///     println!("Asset holder ID: {}", asset_holders.holder.device_id);
-    ///     println!(" - detailed holder info: {:?}", asset_holders.holder);
-    ///     println!(
-    ///         " - amount of asset currently held by device: {}",
-    ///         asset_holders.balance.total
-    ///     );
-    ///     println!(" - amount not yet confirmed: {}\n", asset_holders.balance.unconfirmed);
+    /// for asset_holder in result.asset_holders {
+    ///     if let Some(holder) = asset_holder.holder {
+    ///         println!("Asset holder ID: {}", holder.device_id);
+    ///         println!(" - detailed holder info: {:?}", holder);
+    ///         println!(
+    ///             " - amount of asset currently held by device: {}",
+    ///             asset_holder.balance.total
+    ///         );
+    ///         println!(" - amount not yet confirmed: {}\n", asset_holder.balance.unconfirmed);
+    ///     } else {
+    ///         println!("Migrated asset:");
+    ///         println!(" - total migrated amount: {}", asset_holder.balance.total);
+    ///         println!(" - amount not yet confirmed: {}", asset_holder.balance.unconfirmed);
+    ///     }
     /// }
     ///
     /// if result.has_more {
@@ -1550,6 +1556,705 @@ impl CatenisClient {
         let res = self.sign_and_send_request(req).await?;
 
         Ok(Self::parse_response::<ListAssetHoldersResponse>(res).await?.data)
+    }
+
+    /// Call *Export Asset* API method.
+    ///
+    /// # Examples
+    ///
+    /// Estimate export cost (in foregin blockchain's native coin):
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.export_asset(
+    ///     "aH2AkrrL55GcThhPNa3J",
+    ///     ForeignBlockchain::Ethereum,
+    ///     NewForeignTokenInfo {
+    ///         name: String::from("Catenis test token #10"),
+    ///         symbol: String::from("CTK10"),
+    ///     },
+    ///     Some(ExportAssetOptions {
+    ///         consumption_profile: None,
+    ///         estimate_only: Some(true),
+    ///     }),
+    /// ).await?;
+    ///
+    /// println!(
+    ///     "Estimated foreign blockchain transaction execution price: {}",
+    ///     result.estimated_price.unwrap()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Export asset:
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.export_asset(
+    ///     "aH2AkrrL55GcThhPNa3J",
+    ///     ForeignBlockchain::Ethereum,
+    ///     NewForeignTokenInfo {
+    ///         name: String::from("Catenis test token #10"),
+    ///         symbol: String::from("CTK10"),
+    ///     },
+    ///     None,
+    /// ).await?;
+    ///
+    /// println!("Pending asset export: {:?}", result);
+    ///
+    /// // Start polling for asset export outcome
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn export_asset(
+        &mut self,
+        asset_id: &str,
+        foreign_blockchain: ForeignBlockchain,
+        token: NewForeignTokenInfo,
+        options: Option<ExportAssetOptions>,
+    ) -> Result<ExportAssetResult> {
+        let body = ExportAssetRequest {
+            token,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/:asset_id/export/:foreign_blockchain",
+            body_json,
+            Some(&[
+                ("asset_id", asset_id),
+                ("foreign_blockchain", foreign_blockchain.to_string().as_str()),
+            ]),
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request(req).await?;
+
+        Ok(Self::parse_response::<ExportAssetResponse>(res).await?.data)
+    }
+
+    /// Call *Migrate Asset* API method.
+    ///
+    /// # Examples
+    ///
+    /// Estimate migration cost (in foreign blockchain's native coin):
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.migrate_asset(
+    ///     "aH2AkrrL55GcThhPNa3J",
+    ///     ForeignBlockchain::Ethereum,
+    ///     AssetMigration::Info(AssetMigrationInfo {
+    ///         direction: AssetMigrationDirection::Outward,
+    ///         amount: 50.0,
+    ///         dest_address: Some(String::from("0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943")),
+    ///     }),
+    ///     Some(MigrateAssetOptions {
+    ///         consumption_profile: None,
+    ///         estimate_only: Some(true),
+    ///     }),
+    /// ).await?;
+    ///
+    /// println!(
+    ///     "Estimated foreign blockchain transaction execution price: {}",
+    ///     result.estimated_price.unwrap()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Migrate asset:
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.migrate_asset(
+    ///     "aH2AkrrL55GcThhPNa3J",
+    ///     ForeignBlockchain::Ethereum,
+    ///     AssetMigration::Info(AssetMigrationInfo {
+    ///         direction: AssetMigrationDirection::Outward,
+    ///         amount: 50.0,
+    ///         dest_address: Some(String::from("0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943")),
+    ///     }),
+    ///     None,
+    /// ).await?;
+    ///
+    /// println!("Pending asset migration: {:?}", result);
+    ///
+    /// // Start polling for asset migration outcome
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Reprocess a (failed) migration:
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.migrate_asset(
+    ///     "aH2AkrrL55GcThhPNa3J",
+    ///     ForeignBlockchain::Ethereum,
+    ///     AssetMigration::ID(String::from("gq8x3efLpEXTkGQchHTb")),
+    ///     None,
+    /// ).await?;
+    ///
+    /// println!("Pending asset migration: {:?}", result);
+    ///
+    /// // Start polling for asset migration outcome
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn migrate_asset(
+        &mut self,
+        asset_id: &str,
+        foreign_blockchain: ForeignBlockchain,
+        migration: AssetMigration,
+        options: Option<MigrateAssetOptions>,
+    ) -> Result<MigrateAssetResult> {
+        let body = MigrateAssetRequest {
+            migration,
+            options
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/:asset_id/migrate/:foreign_blockchain",
+            body_json,
+            Some(&[
+                ("asset_id", asset_id),
+                ("foreign_blockchain", foreign_blockchain.to_string().as_str()),
+            ]),
+            None::<KVList>,
+        ).await?;
+
+        let res = self.sign_and_send_request(req).await?;
+
+        Ok(Self::parse_response::<MigrateAssetResponse>(res).await?.data)
+    }
+
+    /// Call *Asset Export Outcome* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.asset_export_outcome(
+    ///     "aH2AkrrL55GcThhPNa3J",
+    ///     ForeignBlockchain::Ethereum,
+    /// ).await?;
+    ///
+    /// match result.status {
+    ///     AssetExportStatus::Success => {
+    ///         // Asset successfully exported
+    ///         println!("Foreign token ID (address): {}", result.token.id.unwrap());
+    ///     },
+    ///     AssetExportStatus::Pending => {
+    ///         // Final asset export state not yet reached
+    ///     },
+    ///     AssetExportStatus::Error => {
+    ///         // Asset export has failed. Process error
+    ///         println!(
+    ///             "Error executing foreign blockchain transaction: {}",
+    ///             result.foreign_transaction.error.unwrap()
+    ///         );
+    ///     },
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn asset_export_outcome(
+        &mut self,
+        asset_id: &str,
+        foreign_blockchain: ForeignBlockchain,
+    ) -> Result<AssetExportOutcomeResult> {
+        let req = self.get_request(
+            "assets/:asset_id/export/:foreign_blockchain",
+            Some(&[
+                ("asset_id", asset_id),
+                ("foreign_blockchain", foreign_blockchain.to_string().as_str()),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req).await?;
+
+        Ok(Self::parse_response::<AssetExportOutcomeResponse>(res).await?.data)
+    }
+
+    /// Call *Asset Migration Outcome* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.asset_migration_outcome(
+    ///     "gq8x3efLpEXTkGQchHTb",
+    /// ).await?;
+    ///
+    /// match result.status {
+    ///     AssetMigrationStatus::Success => {
+    ///         // Asset amount successfully migrated
+    ///         println!("Asset amount successfully migrated");
+    ///     },
+    ///     AssetMigrationStatus::Pending => {
+    ///         // Final asset migration state not yet reached
+    ///     },
+    ///     _ => {
+    ///         // Asset migration has failed. Process error
+    ///         if let Some(error) = result.catenis_service.error {
+    ///             println!("Error executing Catenis service: {}", error);
+    ///         }
+    ///
+    ///         if let Some(error) = result.foreign_transaction.error {
+    ///             println!("Error executing foreign blockchain transaction: {}", error);
+    ///         }
+    ///     },
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn asset_migration_outcome(
+        &mut self,
+        migration_id: &str,
+    ) -> Result<AssetMigrationOutcomeResult> {
+        let req = self.get_request(
+            "assets/migrations/:migration_id",
+            Some(&[
+                ("migration_id", migration_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req).await?;
+
+        Ok(Self::parse_response::<AssetMigrationOutcomeResponse>(res).await?.data)
+    }
+
+    /// Call *List Exported Assets* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_exported_assets(
+    ///     Some(ListExportedAssetsOptions {
+    ///         asset_id: None,
+    ///         foreign_blockchain: Some(ForeignBlockchain::Ethereum),
+    ///         token_symbol: None,
+    ///         status: Some(vec![AssetExportStatus::Success]),
+    ///         negate_status: None,
+    ///         start_date: Some("2021-08-01T00:00:00Z".into()),
+    ///         end_date: None,
+    ///         limit: None,
+    ///         skip: None,
+    ///     }),
+    /// ).await?;
+    ///
+    /// if result.exported_assets.len() > 0 {
+    ///     println!("Returned asset exports: {:?}", result.exported_assets);
+    ///
+    ///     if result.has_more {
+    ///         println!("Not all asset exports have been returned");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_exported_assets(&mut self, options: Option<ListExportedAssetsOptions>) -> Result<ListExportedAssetsResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let asset_id;
+        let foreign_blockchain;
+        let token_symbol;
+        let status;
+        let negate_status;
+        let start_date;
+        let end_date;
+        let limit;
+        let skip;
+        let mut query_params = None;
+
+        if let Some(opt) = options {
+            if let Some(val) = opt.asset_id {
+                asset_id = val;
+
+                params_vec.push(("assetId", asset_id.as_str()));
+            }
+
+            if let Some(val) = opt.foreign_blockchain {
+                foreign_blockchain = val.to_string();
+
+                params_vec.push(("foreignBlockchain", foreign_blockchain.as_str()));
+            }
+
+            if let Some(val) = opt.token_symbol {
+                token_symbol = val;
+
+                params_vec.push(("tokenSymbol", token_symbol.as_str()));
+            }
+
+            if let Some(val) = opt.status {
+                let mut list_str = Vec::new();
+
+                for item in val {
+                    list_str.push(item.to_string());
+                }
+
+                if list_str.len() > 0 {
+                    status = list_str.join(",");
+
+                    params_vec.push(("status", status.as_str()));
+                }
+            }
+
+            if let Some(val) = opt.negate_status {
+                negate_status = if val {"true"} else {"false"};
+
+                params_vec.push(("negateStatus", negate_status));
+            }
+
+            if let Some(val) = opt.start_date {
+                start_date = val.to_string();
+
+                params_vec.push(("startDate", start_date.as_str()));
+            }
+
+            if let Some(val) = opt.end_date {
+                end_date = val.to_string();
+
+                params_vec.push(("endDate", end_date.as_str()));
+            }
+
+            if let Some(val) = opt.limit {
+                limit = val.to_string();
+
+                params_vec.push(("limit", limit.as_str()));
+            }
+
+            if let Some(val) = opt.skip {
+                skip = val.to_string();
+
+                params_vec.push(("skip", skip.as_str()));
+            }
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "assets/exported",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req).await?;
+
+        Ok(Self::parse_response::<ListExportedAssetsResponse>(res).await?.data)
+    }
+
+    /// Call *List Asset Migrations* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     async_impl,
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// # let mut ctn_client = async_impl::CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.list_asset_migrations(
+    ///     Some(ListAssetMigrationsOptions {
+    ///         asset_id: None,
+    ///         foreign_blockchain: Some(ForeignBlockchain::Ethereum),
+    ///         direction: Some(AssetMigrationDirection::Outward),
+    ///         status: Some(vec![
+    ///             AssetMigrationStatus::Interrupted,
+    ///             AssetMigrationStatus::Error,
+    ///         ]),
+    ///         negate_status: None,
+    ///         start_date: Some("2021-08-01T00:00:00Z".into()),
+    ///         end_date: None,
+    ///         limit: None,
+    ///         skip: None,
+    ///     }),
+    /// ).await?;
+    ///
+    /// if result.asset_migrations.len() > 0 {
+    ///     println!("Returned asset migrations: {:?}", result.asset_migrations);
+    ///
+    ///     if result.has_more {
+    ///         println!("Not all asset migrations have been returned");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_asset_migrations(&mut self, options: Option<ListAssetMigrationsOptions>) -> Result<ListAssetMigrationsResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let asset_id;
+        let foreign_blockchain;
+        let direction;
+        let status;
+        let negate_status;
+        let start_date;
+        let end_date;
+        let limit;
+        let skip;
+        let mut query_params = None;
+
+        if let Some(opt) = options {
+            if let Some(val) = opt.asset_id {
+                asset_id = val;
+
+                params_vec.push(("assetId", asset_id.as_str()));
+            }
+
+            if let Some(val) = opt.foreign_blockchain {
+                foreign_blockchain = val.to_string();
+
+                params_vec.push(("foreignBlockchain", foreign_blockchain.as_str()));
+            }
+
+            if let Some(val) = opt.direction {
+                direction = val.to_string();
+
+                params_vec.push(("direction", direction.as_str()));
+            }
+
+            if let Some(val) = opt.status {
+                let mut list_str = Vec::new();
+
+                for item in val {
+                    list_str.push(item.to_string());
+                }
+
+                if list_str.len() > 0 {
+                    status = list_str.join(",");
+
+                    params_vec.push(("status", status.as_str()));
+                }
+            }
+
+            if let Some(val) = opt.negate_status {
+                negate_status = if val {"true"} else {"false"};
+
+                params_vec.push(("negateStatus", negate_status));
+            }
+
+            if let Some(val) = opt.start_date {
+                start_date = val.to_string();
+
+                params_vec.push(("startDate", start_date.as_str()));
+            }
+
+            if let Some(val) = opt.end_date {
+                end_date = val.to_string();
+
+                params_vec.push(("endDate", end_date.as_str()));
+            }
+
+            if let Some(val) = opt.limit {
+                limit = val.to_string();
+
+                params_vec.push(("limit", limit.as_str()));
+            }
+
+            if let Some(val) = opt.skip {
+                skip = val.to_string();
+
+                params_vec.push(("skip", skip.as_str()));
+            }
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "assets/migrations",
+            None::<KVList>,
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req).await?;
+
+        Ok(Self::parse_response::<ListAssetMigrationsResponse>(res).await?.data)
     }
 
     /// Call *List Permission Events* API method.
@@ -4418,6 +5123,13 @@ mod tests {
           "total": 1445.75,
           "unconfirmed": 0
         }
+      },
+      {
+        "migrated": true,
+        "balance": {
+          "total": 387.5,
+          "unconfirmed": 0
+        }
       }
     ],
     "hasMore": false
@@ -4467,29 +5179,905 @@ mod tests {
         assert_eq!(result, ListAssetHoldersResult {
             asset_holders: vec![
                 AssetHolderEntry {
-                    holder: DeviceInfo {
+                    holder: Some(DeviceInfo {
                         device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
                         name: Some(String::from("TstDev2")),
                         prod_unique_id: None,
-                    },
+                    }),
+                    migrated: None,
                     balance: AssetBalance {
                         total: 166.75,
                         unconfirmed: 0.0,
                     },
                 },
                 AssetHolderEntry {
-                    holder: DeviceInfo {
+                    holder: Some(DeviceInfo {
                         device_id: String::from("drc3XdxNtzoucpw9xiRp"),
                         name: Some(String::from("TstDev1")),
                         prod_unique_id: Some(String::from("ABC123")),
-                    },
+                    }),
+                    migrated: None,
                     balance: AssetBalance {
                         total: 1445.75,
                         unconfirmed: 0.0,
                     },
                 },
+                AssetHolderEntry {
+                    holder: None,
+                    migrated: Some(true),
+                    balance: AssetBalance {
+                        total: 387.5,
+                        unconfirmed: 0.0,
+                    },
+                },
             ],
             has_more: false,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_export_asset_estimate_only() {
+        // Simulate successful 'Export Asset' API method response for estimate only
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "estimatedPrice": "0.05850782"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/aCSy24HLjKMbpnvJ8GTx/export/ethereum", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"token":{"name":"Catenis test token #11","symbol":"CTK11"},"options":{"consumptionProfile":"fastest","estimateOnly":true}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.export_asset(
+            "aCSy24HLjKMbpnvJ8GTx",
+            ForeignBlockchain::Ethereum,
+            NewForeignTokenInfo {
+                name: String::from("Catenis test token #11"),
+                symbol: String::from("CTK11"),
+            },
+            Some(ExportAssetOptions {
+                consumption_profile: Some(ForeignConsumptionProfile::Fastest),
+                estimate_only: Some(true),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ExportAssetResult {
+            foreign_transaction: None,
+            token: None,
+            status: None,
+            date: None,
+            estimated_price: Some(String::from("0.05850782")),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_export_asset_regular() {
+        // Simulate successful 'Export Asset' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "foreignTransaction": {
+      "txid": "0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a",
+      "isPending": true
+    },
+    "token": {
+      "name": "Catenis test token #11",
+      "symbol": "CTK11"
+    },
+    "status": "pending",
+    "date": "2021-08-10T12:57:12.583Z"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/aCSy24HLjKMbpnvJ8GTx/export/ethereum", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"token":{"name":"Catenis test token #11","symbol":"CTK11"},"options":{"consumptionProfile":"fastest"}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.export_asset(
+            "aCSy24HLjKMbpnvJ8GTx",
+            ForeignBlockchain::Ethereum,
+            NewForeignTokenInfo {
+                name: String::from("Catenis test token #11"),
+                symbol: String::from("CTK11"),
+            },
+            Some(ExportAssetOptions {
+                consumption_profile: Some(ForeignConsumptionProfile::Fastest),
+                estimate_only: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ExportAssetResult {
+            foreign_transaction: Some(ForeignTransactionInfo {
+                txid: String::from("0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a"),
+                is_pending: true,
+                success: None,
+                error: None,
+            }),
+            token: Some(ForeignTokenInfo {
+                name: String::from("Catenis test token #11"),
+                symbol: String::from("CTK11"),
+                id: None,
+            }),
+            status: Some(AssetExportStatus::Pending),
+            date: Some("2021-08-10T12:57:12.583Z".into()),
+            estimated_price: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_migrate_asset_estimate_only() {
+        // Simulate successful 'Migrate Asset' API method response for estimate only
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "estimatedPrice": "0.001723913"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/aCSy24HLjKMbpnvJ8GTx/migrate/ethereum", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"migration":{"direction":"outward","amount":25.3,"destAddress":"0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943"},"options":{"consumptionProfile":"slow","estimateOnly":true}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.migrate_asset(
+            "aCSy24HLjKMbpnvJ8GTx",
+            ForeignBlockchain::Ethereum,
+            AssetMigration::Info(AssetMigrationInfo {
+                direction: AssetMigrationDirection::Outward,
+                amount: 25.3,
+                dest_address: Some(String::from("0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943")),
+            }),
+            Some(MigrateAssetOptions {
+                consumption_profile: Some(ForeignConsumptionProfile::Slow),
+                estimate_only: Some(true),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, MigrateAssetResult {
+            migration_id: None,
+            catenis_service: None,
+            foreign_transaction: None,
+            status: None,
+            date: None,
+            estimated_price: Some(String::from("0.001723913")),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_migrate_asset_regular() {
+        // Simulate successful 'Migrate Asset' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "migrationId": "gTQ8Qf5W6kdmdYdEEoD9",
+    "catenisService": {
+      "status": "fulfilled",
+      "txid": "7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777"
+    },
+    "foreignTransaction": {
+      "txid": "0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9",
+      "isPending": true
+    },
+    "status": "pending",
+    "date": "2021-08-10T12:59:41.492Z"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/aCSy24HLjKMbpnvJ8GTx/migrate/ethereum", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"migration":{"direction":"outward","amount":25.3,"destAddress":"0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943"},"options":{"consumptionProfile":"slow"}}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.migrate_asset(
+            "aCSy24HLjKMbpnvJ8GTx",
+            ForeignBlockchain::Ethereum,
+            AssetMigration::Info(AssetMigrationInfo {
+                direction: AssetMigrationDirection::Outward,
+                amount: 25.3,
+                dest_address: Some(String::from("0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943")),
+            }),
+            Some(MigrateAssetOptions {
+                consumption_profile: Some(ForeignConsumptionProfile::Slow),
+                estimate_only: None,
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, MigrateAssetResult {
+            migration_id: Some(String::from("gTQ8Qf5W6kdmdYdEEoD9")),
+            catenis_service: Some(CatenisServiceInfo {
+                status: CatenisServiceStatus::Fulfilled,
+                txid: Some(String::from("7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777")),
+                error: None,
+            }),
+            foreign_transaction: Some(ForeignTransactionInfo {
+                txid: String::from("0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9"),
+                is_pending: true,
+                success: None,
+                error: None,
+            }),
+            status: Some(AssetMigrationStatus::Pending),
+            date: Some("2021-08-10T12:59:41.492Z".into()),
+            estimated_price: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_migrate_asset_retry() {
+        // Simulate successful 'Migrate Asset' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "migrationId": "gSLb9FTdGxgSLufuNzhR",
+    "catenisService": {
+      "status": "awaiting"
+    },
+    "foreignTransaction": {
+      "txid": "0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee",
+      "isPending": true
+    },
+    "status": "pending",
+    "date": "2021-08-03T19:11:10.350Z"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("POST")),
+            path: Some(format!("/api/{}/assets/aCSy24HLjKMbpnvJ8GTx/migrate/ethereum", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                    String::from("content-type"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                    Some(HttpHeader {
+                        field: String::from("content-type"),
+                        value: String::from("application/json; charset=utf-8"),
+                    }),
+                ].into_iter()).collect()
+            ),
+            body: Some(String::from(r#"{"migration":"gSLb9FTdGxgSLufuNzhR"}"#)),
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.migrate_asset(
+            "aCSy24HLjKMbpnvJ8GTx",
+            ForeignBlockchain::Ethereum,
+            AssetMigration::ID(String::from("gSLb9FTdGxgSLufuNzhR")),
+            None,
+        ).await.unwrap();
+
+        assert_eq!(result, MigrateAssetResult {
+            migration_id: Some(String::from("gSLb9FTdGxgSLufuNzhR")),
+            catenis_service: Some(CatenisServiceInfo {
+                status: CatenisServiceStatus::Awaiting,
+                txid: None,
+                error: None,
+            }),
+            foreign_transaction: Some(ForeignTransactionInfo {
+                txid: String::from("0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee"),
+                is_pending: true,
+                success: None,
+                error: None,
+            }),
+            status: Some(AssetMigrationStatus::Pending),
+            date: Some("2021-08-03T19:11:10.350Z".into()),
+            estimated_price: None,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_asset_export_outcome() {
+        // Simulate successful 'Asset Export Outcome' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "foreignTransaction": {
+      "txid": "0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a",
+      "isPending": false,
+      "success": true
+    },
+    "token": {
+      "name": "Catenis test token #11",
+      "symbol": "CTK11",
+      "id": "0x5cE78E7204DD8f7d86142fAaA694d5354b997600"
+    },
+    "status": "success",
+    "date": "2021-08-10T12:57:24.217Z"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/aCSy24HLjKMbpnvJ8GTx/export/ethereum", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.asset_export_outcome(
+            "aCSy24HLjKMbpnvJ8GTx",
+            ForeignBlockchain::Ethereum,
+        ).await.unwrap();
+
+        assert_eq!(result, AssetExportOutcomeResult {
+            foreign_transaction: ForeignTransactionInfo {
+                txid: String::from("0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a"),
+                is_pending: false,
+                success: Some(true),
+                error: None,
+            },
+            token: ForeignTokenInfo {
+                name: String::from("Catenis test token #11"),
+                symbol: String::from("CTK11"),
+                id: Some(String::from("0x5cE78E7204DD8f7d86142fAaA694d5354b997600")),
+            },
+            status: AssetExportStatus::Success,
+            date: "2021-08-10T12:57:24.217Z".into(),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_asset_migration_outcome() {
+        // Simulate successful 'Asset Migration Outcome' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "direction": "outward",
+    "assetId": "aCSy24HLjKMbpnvJ8GTx",
+    "foreignBlockchain": "ethereum",
+    "amount": 5.0,
+    "catenisService": {
+      "status": "fulfilled",
+      "txid": "7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777"
+    },
+    "foreignTransaction": {
+      "txid": "0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9",
+      "isPending": false,
+      "success": true
+    },
+    "status": "success",
+    "date": "2021-08-10T13:00:08.656Z"
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/migrations/gTQ8Qf5W6kdmdYdEEoD9", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.asset_migration_outcome(
+            "gTQ8Qf5W6kdmdYdEEoD9",
+        ).await.unwrap();
+
+        assert_eq!(result, AssetMigrationOutcomeResult {
+            asset_id: String::from("aCSy24HLjKMbpnvJ8GTx"),
+            foreign_blockchain: ForeignBlockchain::Ethereum,
+            direction: AssetMigrationDirection::Outward,
+            amount: 5.0,
+            catenis_service: CatenisServiceInfo {
+                status: CatenisServiceStatus::Fulfilled,
+                txid: Some(String::from("7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777")),
+                error: None,
+            },
+            foreign_transaction: ForeignTransactionInfo {
+                txid: String::from("0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9"),
+                is_pending: false,
+                success: Some(true),
+                error: None,
+            },
+            status: AssetMigrationStatus::Success,
+            date: "2021-08-10T13:00:08.656Z".into(),
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_exported_assets() {
+        // Simulate successful 'List Exported Assets' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "exportedAssets": [
+      {
+        "assetId": "aH2AkrrL55GcThhPNa3J",
+        "foreignBlockchain": "ethereum",
+        "foreignTransaction": {
+          "txid": "0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a",
+          "isPending": false,
+          "success": true
+        },
+        "token": {
+          "name": "Catenis test token #10",
+          "symbol": "CTK10",
+          "id": "0x537580164Ba9DB2e8C254a38E254ce15d07fDef9"
+        },
+        "status": "success",
+        "date": "2021-08-03T18:41:27.679Z"
+      },
+      {
+        "assetId": "aCSy24HLjKMbpnvJ8GTx",
+        "foreignBlockchain": "ethereum",
+        "foreignTransaction": {
+          "txid": "0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a",
+          "isPending": false,
+          "success": true
+        },
+        "token": {
+          "name": "Catenis test token #11",
+          "symbol": "CTK11",
+          "id": "0x5cE78E7204DD8f7d86142fAaA694d5354b997600"
+        },
+        "status": "success",
+        "date": "2021-08-10T12:57:24.217Z"
+      }
+    ],
+    "hasMore": true
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/exported?foreignBlockchain=ethereum&status=error&negateStatus=true&startDate=2021-08-01T00%3A00%3A00.000Z&endDate=2021-08-24T00%3A00%3A00.000Z&limit=2&skip=0", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_exported_assets(
+            Some(ListExportedAssetsOptions {
+                asset_id: None,
+                foreign_blockchain: Some(ForeignBlockchain::Ethereum),
+                token_symbol: None,
+                status: Some(vec![AssetExportStatus::Error]),
+                negate_status: Some(true),
+                start_date: Some("2021-08-01T00:00:00Z".into()),
+                end_date: Some("2021-08-24T00:00:00Z".into()),
+                limit: Some(2),
+                skip: Some(0),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ListExportedAssetsResult {
+            exported_assets: vec![
+                AssetExportEntry {
+                    asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    token: ForeignTokenInfo {
+                        name: String::from("Catenis test token #10"),
+                        symbol: String::from("CTK10"),
+                        id: Some(String::from("0x537580164Ba9DB2e8C254a38E254ce15d07fDef9")),
+                    },
+                    status: AssetExportStatus::Success,
+                    date: "2021-08-03T18:41:27.679Z".into(),
+                },
+                AssetExportEntry {
+                    asset_id: String::from("aCSy24HLjKMbpnvJ8GTx"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    token: ForeignTokenInfo {
+                        name: String::from("Catenis test token #11"),
+                        symbol: String::from("CTK11"),
+                        id: Some(String::from("0x5cE78E7204DD8f7d86142fAaA694d5354b997600")),
+                    },
+                    status: AssetExportStatus::Success,
+                    date: "2021-08-10T12:57:24.217Z".into(),
+                },
+            ],
+            has_more: true,
+        });
+    }
+
+    #[tokio::test]
+    async fn it_list_asset_migrations() {
+        // Simulate successful 'List Asset Migrations' API method response
+
+        // Start HTTP server in success simulation node
+        let res_body = r#"{
+  "status": "success",
+  "data": {
+    "assetMigrations": [
+      {
+        "migrationId": "gq8x3efLpEXTkGQchHTb",
+        "assetId": "aH2AkrrL55GcThhPNa3J",
+        "foreignBlockchain": "ethereum",
+        "direction": "outward",
+        "amount": 10,
+        "catenisService": {
+          "status": "fulfilled",
+          "txid": "61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf"
+        },
+        "foreignTransaction": {
+          "txid": "0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7",
+          "isPending": false,
+          "success": true
+        },
+        "status": "success",
+        "date": "2021-08-03T18:51:55.591Z"
+      },
+      {
+        "migrationId": "gTQ8Qf5W6kdmdYdEEoD9",
+        "assetId": "aCSy24HLjKMbpnvJ8GTx",
+        "foreignBlockchain": "ethereum",
+        "direction": "outward",
+        "amount": 5,
+        "catenisService": {
+          "status": "fulfilled",
+          "txid": "7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777"
+        },
+        "foreignTransaction": {
+          "txid": "0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9",
+          "isPending": false,
+          "success": true
+        },
+        "status": "success",
+        "date": "2021-08-10T13:00:08.656Z"
+      }
+    ],
+    "hasMore": true
+  }
+}"#;
+        let http_server = HttpServer::new(
+            HttpServerMode::Success(
+                HttpBody::from_json(res_body).unwrap(),
+            ),
+            "localhost"
+        ).with_expected_request(PartialHttpRequest {
+            method: Some(String::from("GET")),
+            path: Some(format!("/api/{}/assets/migrations?foreignBlockchain=ethereum&direction=outward&status=interrupted%2Cerror&negateStatus=true&startDate=2021-08-01T00%3A00%3A00.000Z&endDate=2021-08-24T00%3A00%3A00.000Z&limit=2&skip=0", DEFAULT_API_VERSION.to_string())),
+            headers: Some(
+                vec![
+                    String::from("x-bcot-timestamp"),
+                    String::from("authorization"),
+                ].into_iter().zip(vec![
+                    None,
+                    None,
+                ].into_iter()).collect()
+            ),
+            body: None,
+        });
+        http_server.start();
+
+        let server_port = http_server.get_port();
+
+        // Instantiate Catenis API client
+        let mut ctn_client = CatenisClient::new_with_options(
+            Some((
+                "drc3XdxNtzoucpw9xiRp",
+                "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+            ).into()),
+            &[
+                ClientOptions::Host(&format!("localhost:{}", server_port)),
+                ClientOptions::Secure(false),
+            ],
+        ).unwrap();
+
+        let result = ctn_client.list_asset_migrations(
+            Some(ListAssetMigrationsOptions {
+                asset_id: None,
+                foreign_blockchain: Some(ForeignBlockchain::Ethereum),
+                direction: Some(AssetMigrationDirection::Outward),
+                status: Some(vec![
+                    AssetMigrationStatus::Interrupted,
+                    AssetMigrationStatus::Error,
+                ]),
+                negate_status: Some(true),
+                start_date: Some("2021-08-01T00:00:00Z".into()),
+                end_date: Some("2021-08-24T00:00:00Z".into()),
+                limit: Some(2),
+                skip: Some(0),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(result, ListAssetMigrationsResult {
+            asset_migrations: vec![
+                AssetMigrationEntry {
+                    migration_id: String::from("gq8x3efLpEXTkGQchHTb"),
+                    asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    direction: AssetMigrationDirection::Outward,
+                    amount: 10.0,
+                    catenis_service: CatenisServiceInfo {
+                        status: CatenisServiceStatus::Fulfilled,
+                        txid: Some(String::from("61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf")),
+                        error: None,
+                    },
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    status: AssetMigrationStatus::Success,
+                    date: "2021-08-03T18:51:55.591Z".into(),
+                },
+                AssetMigrationEntry {
+                    migration_id: String::from("gTQ8Qf5W6kdmdYdEEoD9"),
+                    asset_id: String::from("aCSy24HLjKMbpnvJ8GTx"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    direction: AssetMigrationDirection::Outward,
+                    amount: 5.0,
+                    catenis_service: CatenisServiceInfo {
+                        status: CatenisServiceStatus::Fulfilled,
+                        txid: Some(String::from("7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777")),
+                        error: None,
+                    },
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    status: AssetMigrationStatus::Success,
+                    date: "2021-08-10T13:00:08.656Z".into(),
+                },
+            ],
+            has_more: true,
         });
     }
 
@@ -4971,7 +6559,9 @@ mod tests {
     "sent-msg-read": "Previously sent message has been read by intended receiver (target device)",
     "asset-received": "An amount of an asset has been received",
     "asset-confirmed": "An amount of an asset that was pending due to an asset transfer has been confirmed",
-    "final-msg-progress": "Progress of asynchronous message processing has come to an end"
+    "final-msg-progress": "Progress of asynchronous message processing has come to an end",
+    "asset-export-outcome": "Asset export has been finalized",
+    "asset-migration-outcome": "Asset migration has been finalized"
   }
 }"#;
         let http_server = HttpServer::new(
@@ -5019,12 +6609,16 @@ mod tests {
                 NotificationEvent::AssetReceived,
                 NotificationEvent::AssetConfirmed,
                 NotificationEvent::FinalMsgProgress,
+                NotificationEvent::AssetExportOutcome,
+                NotificationEvent::AssetMigrationOutcome,
             ].into_iter().zip(vec![
                 String::from("A new message has been received"),
                 String::from("Previously sent message has been read by intended receiver (target device)"),
                 String::from("An amount of an asset has been received"),
                 String::from("An amount of an asset that was pending due to an asset transfer has been confirmed"),
                 String::from("Progress of asynchronous message processing has come to an end"),
+                String::from("Asset export has been finalized"),
+                String::from("Asset migration has been finalized"),
             ].into_iter()).collect()
         );
     }

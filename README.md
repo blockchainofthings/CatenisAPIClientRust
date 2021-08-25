@@ -3,7 +3,7 @@
 This library is used to make it easier to access the Catenis Enterprise API services from code
 written in the Rust programming language.
 
-> **Note**: this release of the library targets **version 10.0** of the Catenis Enterprise API.
+> **Note**: this release of the library targets **version 0.11** of the Catenis Enterprise API.
 
 ## Documentation
 

@@ -662,7 +662,14 @@ pub struct AssetIssuanceEventEntry {
 #[serde(rename_all = "camelCase")]
 pub struct AssetHolderEntry {
     /// The virtual device that holds an amount of the asset.
-    pub holder: DeviceInfo,
+    ///
+    /// > **Note**: not returned for the special entry reporting the migrated asset amount.
+    pub holder: Option<DeviceInfo>,
+    /// The value **`true`** indicating that this is the special entry reporting the migrated asset
+    /// amount.
+    ///
+    /// > **Note**: only returned for the special entry reporting the migrated asset amount.
+    pub migrated: Option<bool>,
     /// The asset balance.
     pub balance: AssetBalance,
 }
@@ -894,6 +901,10 @@ pub enum NotificationEvent {
     AssetConfirmed,
     /// The *final-msg-progress* notification event.
     FinalMsgProgress,
+    /// The *asset-export-outcome* notification event.
+    AssetExportOutcome,
+    /// The *asset-migration-outcome* notification event.
+    AssetMigrationOutcome,
     /// Any unknown notification event.
     UnknownEvent(String),
 }
@@ -933,6 +944,8 @@ impl ToString for NotificationEvent {
             NotificationEvent::AssetReceived => "asset-received",
             NotificationEvent::AssetConfirmed => "asset-confirmed",
             NotificationEvent::FinalMsgProgress => "final-msg-progress",
+            NotificationEvent::AssetExportOutcome => "asset-export-outcome",
+            NotificationEvent::AssetMigrationOutcome => "asset-migration-outcome",
             NotificationEvent::UnknownEvent(s) => s.as_str(),
         })
     }
@@ -946,9 +959,352 @@ impl Into<NotificationEvent> for &str {
             "asset-received" => NotificationEvent::AssetReceived,
             "asset-confirmed" => NotificationEvent::AssetConfirmed,
             "final-msg-progress" => NotificationEvent::FinalMsgProgress,
+            "asset-export-outcome" => NotificationEvent::AssetExportOutcome,
+            "asset-migration-outcome" => NotificationEvent::AssetMigrationOutcome,
             s @ _ => NotificationEvent::UnknownEvent(String::from(s)),
         }
     }
+}
+
+/// Foreign blockchain.
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ForeignBlockchain {
+    /// Ethereum blockchain.
+    Ethereum,
+    /// Binance Smart Chain blockchain.
+    Binance,
+    /// Polygon PoS Chain blockchain.
+    Polygon,
+}
+
+impl ToString for ForeignBlockchain {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            ForeignBlockchain::Ethereum => "ethereum",
+            ForeignBlockchain::Binance => "binance",
+            ForeignBlockchain::Polygon => "polygon",
+        })
+    }
+}
+
+/// Properties for a new foreign blockchain token.
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NewForeignTokenInfo {
+    /// The token name.
+    pub name: String,
+    /// The token symbol.
+    pub symbol: String,
+}
+
+/// Foreign blockchain's native coin consumption profile.
+#[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ForeignConsumptionProfile {
+    /// Pay premium to have the foreign blockchain transaction executed as fast as possible.
+    Fastest,
+    /// Pay a little less but make sure that the foreign blockchain transaction is executed faster
+    ///  than most transactions.
+    Fast,
+    /// Pay an average price to execute the foreign blockchain transaction.
+    Average,
+    /// Pay just enough to make sure that the foreign blockchain transaction will get executed.
+    Slow,
+}
+
+/// Option settings for exporting an asset.
+#[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportAssetOptions {
+    /// Name of the foreign blockchain's native coin consumption profile to use.
+    ///
+    /// > **Note**: if not specified, the value currently set (via Catenis's client admin UI) for
+    /// the virtual device's client foreign blockchain consumption profile is used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consumption_profile: Option<ForeignConsumptionProfile>,
+    /// When set, indicates that no asset export should be executed but only the estimated price (in
+    ///  the foreign blockchain's native coin) to fulfill the operation should be returned.
+    ///
+    /// Default value: **`false`**.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimate_only: Option<bool>,
+}
+
+/// Information about an issued foreign blockchain transaction.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignTransactionInfo {
+    /// The ID (or hash) of the foreign blockchain transaction.
+    pub txid: String,
+    /// Indicates whether the foreign blockchain transaction is yet to be executed.
+    pub is_pending: bool,
+    /// Indicates whether the foreign blockchain transaction has been successfully executed or not.
+    ///
+    /// > **Note**: only returned after the foreign blockchain transaction is executed.
+    pub success: Option<bool>,
+    /// An error message describing what went wrong when executing the transaction.
+    ///
+    /// > **Note**: only returned if the foreign blockchain transaction's execution has failed.
+    pub error: Option<String>,
+}
+
+/// Information about a foreign blockchain token.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignTokenInfo {
+    /// The token name.
+    pub name: String,
+    /// The token symbol.
+    pub symbol: String,
+    /// The ID (or address) of the token on the foreign blockchain.
+    ///
+    /// > **Note**: only returned if the token has been successfully created on the foreign
+    /// blockchain.
+    pub id: Option<String>,
+}
+
+/// Asset export status.
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AssetExportStatus {
+    /// The asset export has not yet reached its final state.
+    Pending,
+    /// The asset export has been successfully finalized.
+    Success,
+    /// The asset export has failed.
+    Error,
+}
+
+impl ToString for AssetExportStatus {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            AssetExportStatus::Pending => "pending",
+            AssetExportStatus::Success => "success",
+            AssetExportStatus::Error => "error",
+        })
+    }
+}
+
+/// Direction of asset migration.
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AssetMigrationDirection {
+    /// Migrate asset amount from Catenis to the foreign blockchain.
+    Outward,
+    /// Migrate asset amount from the foreign blockchain back to Catenis.
+    Inward,
+}
+
+impl ToString for AssetMigrationDirection {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            AssetMigrationDirection::Outward => "outward",
+            AssetMigrationDirection::Inward => "inward",
+        })
+    }
+}
+
+/// Information about an asset migration.
+#[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetMigrationInfo {
+    /// The direction of the migration.
+    pub direction: AssetMigrationDirection,
+    /// The amount of the asset to be migrated.
+    pub amount: f64,
+    /// The address of the account on the foreign blockchain that should be credited with the
+    ///  specified amount of the foreign token.
+    ///
+    /// > **Note**: only required for an out-migration (`direction`:
+    /// **`AssetMigrationDirection::Outward`**).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dest_address: Option<String>,
+}
+
+/// Data type used for referencing an asset migration.
+#[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum AssetMigration {
+    /// The asset migration info.
+    Info(AssetMigrationInfo),
+    /// The asset migration ID.
+    ID(String),
+}
+
+/// Option settings for exporting an asset.
+#[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrateAssetOptions {
+    /// Name of the foreign blockchain's native coin consumption profile to use.
+    ///
+    /// > **Note**: if not specified, the value currently set (via Catenis's client admin UI) for
+    /// the virtual device's client foreign blockchain consumption profile is used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consumption_profile: Option<ForeignConsumptionProfile>,
+    /// When set, indicates that no asset migration should be executed but only the estimated price
+    ///  (in the foreign blockchain's native coin) to fulfill the operation should be returned.
+    ///
+    /// Default value: **`false`**.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimate_only: Option<bool>,
+}
+
+/// Catenis service's execution status.
+#[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CatenisServiceStatus {
+    /// The execution of the Catenis service has not started yet.
+    Awaiting,
+    /// The Catenis service's execution has failed.
+    Failure,
+    /// The Catenis service has been successfully executed.
+    Fulfilled,
+}
+
+/// Information about a Catenis service.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CatenisServiceInfo {
+    /// The current state of the service's execution.
+    pub status: CatenisServiceStatus,
+    /// The ID of the Catenis transaction issued to fulfill the service.
+    ///
+    /// > **Note**: only returned if the service is successfully fulfilled.
+    pub txid: Option<String>,
+    /// An error message describing what went wrong when executing the service.
+    ///
+    /// > **Note**: only returned if the service's execution has failed.
+    pub error: Option<String>,
+}
+
+/// Asset migration status.
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AssetMigrationStatus {
+    /// The asset migration has not yet reached its final state.
+    Pending,
+    /// Migration started (first step completed successfully) but failed during its second step.
+    ///
+    /// >**Note**: this represents an inconsistent state, and migration should be retried.
+    Interrupted,
+    /// The asset migration has been successfully finalized.
+    Success,
+    /// The asset migration has failed.
+    Error,
+}
+
+impl ToString for AssetMigrationStatus {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            AssetMigrationStatus::Pending => "pending",
+            AssetMigrationStatus::Interrupted => "interrupted",
+            AssetMigrationStatus::Success => "success",
+            AssetMigrationStatus::Error => "error",
+        })
+    }
+}
+
+/// Information about a listed asset export.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetExportEntry {
+    /// The ID of the exported asset.
+    pub asset_id: String,
+    /// The foreign blockchain to where the asset has been exported.
+    pub foreign_blockchain: ForeignBlockchain,
+    /// Information about the transaction issued on the foreign blockchain to create the resulting
+    ///  foreign token.
+    pub foreign_transaction: ForeignTransactionInfo,
+    /// Information about the resulting foreign token.
+    pub token: ForeignTokenInfo,
+    /// The current state of the asset export.
+    pub status: AssetExportStatus,
+    /// Date and time when the asset has been exported.
+    pub date: UtcDateTime,
+}
+
+/// Information about a listed asset migration.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetMigrationEntry {
+    /// The ID of the asset migration.
+    pub migration_id: String,
+    /// The ID of the asset the amount of which has been migrated.
+    pub asset_id: String,
+    /// The foreign blockchain to/from where the asset amount has been migrated.
+    pub foreign_blockchain: ForeignBlockchain,
+    /// The direction of the migration
+    pub direction: AssetMigrationDirection,
+    /// The migrated asset amount.
+    pub amount: f64,
+    /// Information about the execution of the migrate asset Catenis service.
+    pub catenis_service: CatenisServiceInfo,
+    /// Information about the transaction issued on the foreign blockchain to mint/burn the amount
+    ///  of the foreign token..
+    pub foreign_transaction: ForeignTransactionInfo,
+    /// The current state of the asset migration.
+    pub status: AssetMigrationStatus,
+    /// Date and time when the asset amount has been migrated.
+    pub date: UtcDateTime,
+}
+
+/// Options for filtering asset exports.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ListExportedAssetsOptions {
+    /// The ID of the exported asset.
+    pub asset_id: Option<String>,
+    /// The foreign blockchain to where the asset has been exported.
+    pub foreign_blockchain: Option<ForeignBlockchain>,
+    /// The symbol of the resulting foreign token.
+    pub token_symbol: Option<String>,
+    /// List with one or more statuses to include.
+    pub status: Option<Vec<AssetExportStatus>>,
+    /// Indicates whether the specified statuses should be excluded instead.
+    ///
+    /// Default value: **`false`**.
+    pub negate_status: Option<bool>,
+    /// Start of time period within which the asset has been exported.
+    pub start_date: Option<UtcDateTime>,
+    /// End of time period within which the asset has been exported.
+    pub end_date: Option<UtcDateTime>,
+    /// Maximum number of asset exports that should be returned.
+    ///
+    /// > **Note**: must be a positive integer value not greater than 500.
+    pub limit: Option<u16>,
+    /// Number of asset exports that should be skipped.
+    ///
+    /// > **Note**: must be a non-negative (includes zero) integer value.
+    pub skip: Option<usize>,
+}
+
+/// Options for filtering asset migrations.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ListAssetMigrationsOptions {
+    /// The ID of the asset the amount of which has been migrated.
+    pub asset_id: Option<String>,
+    /// The foreign blockchain to/from where the asset amount has been migrated.
+    pub foreign_blockchain: Option<ForeignBlockchain>,
+    /// The direction of the migration.
+    pub direction: Option<AssetMigrationDirection>,
+    /// List with one or more statuses to include.
+    pub status: Option<Vec<AssetMigrationStatus>>,
+    /// Indicates whether the specified statuses should be excluded instead.
+    ///
+    /// Default value: **`false`**.
+    pub negate_status: Option<bool>,
+    /// Start of time period within which the asset amount has been exported.
+    pub start_date: Option<UtcDateTime>,
+    /// End of time period within which the asset amount has been exported.
+    pub end_date: Option<UtcDateTime>,
+    /// Maximum number of asset migrations that should be returned.
+    ///
+    /// > **Note**: must be a positive integer value not greater than 500.
+    pub limit: Option<u16>,
+    /// Number of asset asset migrations that should be skipped.
+    ///
+    /// > **Note**: must be a non-negative (includes zero) integer value.
+    pub skip: Option<usize>,
 }
 
 // Result (used in response) data structures
@@ -1198,6 +1554,108 @@ pub struct RetrieveDeviceIdentificationInfoResult {
     pub device: DeviceInfo,
 }
 
+/// Data returned from a successful call to *Export Asset* API method.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportAssetResult {
+    /// Information about the transaction issued on the foreign blockchain to create the resulting
+    ///  foreign token.
+    pub foreign_transaction: Option<ForeignTransactionInfo>,
+    /// Information about the resulting foreign token.
+    pub token: Option<ForeignTokenInfo>,
+    /// The current state of the asset export.
+    pub status: Option<AssetExportStatus>,
+    /// Date and time when the asset has been exported.
+    pub date: Option<UtcDateTime>,
+    /// A text value representing the price, in the foreign blockchain's native coin, required to
+    ///  execute the foreign blockchain transaction.
+    pub estimated_price: Option<String>,
+}
+
+/// Data returned from a successful call to *Migrate Asset* API method.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrateAssetResult {
+    /// A unique ID used to identify this asset migration.
+    pub migration_id: Option<String>,
+    /// Information about the execution of the migrate asset Catenis service.
+    pub catenis_service: Option<CatenisServiceInfo>,
+    /// Information about the transaction issued on the foreign blockchain to mint/burn the amount
+    ///  of the foreign token.
+    pub foreign_transaction: Option<ForeignTransactionInfo>,
+    /// The current state of the asset migration.
+    pub status: Option<AssetMigrationStatus>,
+    /// Date and time when the asset amount has been migrated.
+    pub date: Option<UtcDateTime>,
+    /// A text value representing the price, in the foreign blockchain's native coin, required to
+    ///  execute the foreign blockchain transaction.
+    pub estimated_price: Option<String>,
+}
+
+/// Data returned from a successful call to *Asset Export Outcome* API method.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetExportOutcomeResult {
+    /// Information about the transaction issued on the foreign blockchain to create the resulting
+    ///  foreign token.
+    pub foreign_transaction: ForeignTransactionInfo,
+    /// Information about the resulting foreign token.
+    pub token: ForeignTokenInfo,
+    /// The current state of the asset export.
+    pub status: AssetExportStatus,
+    /// Date and time when the asset has been exported.
+    pub date: UtcDateTime,
+}
+
+/// Data returned from a successful call to *Asset Migration Outcome* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetMigrationOutcomeResult {
+    /// The ID of the asset the amount of which has been migrated.
+    pub asset_id: String,
+    /// The foreign blockchain to/from where the asset amount has been migrated.
+    pub foreign_blockchain: ForeignBlockchain,
+    /// The direction of the migration.
+    pub direction: AssetMigrationDirection,
+    /// The migrated asset amount.
+    pub amount: f64,
+    /// Information about the execution of the migrate asset Catenis service.
+    pub catenis_service: CatenisServiceInfo,
+    /// Information about the transaction issued on the foreign blockchain to mint/burn the amount
+    ///  of the foreign token.
+    pub foreign_transaction: ForeignTransactionInfo,
+    /// The current state of the asset migration.
+    pub status: AssetMigrationStatus,
+    /// Date and time when the asset amount has been migrated.
+    pub date: UtcDateTime,
+}
+
+/// Data returned from a successful call to *List Exported Assets* API method.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListExportedAssetsResult {
+    /// List of returned issued asset exports.
+    ///
+    /// > **Note**: the list is sorted in ascending order in regard to the returned `date` field.
+    pub exported_assets: Vec<AssetExportEntry>,
+    /// Indicates whether there are more asset exports that satisfy the search criteria yet to be
+    ///  returned.
+    pub has_more: bool,
+}
+
+/// Data returned from a successful call to *List Asset Migrations* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAssetMigrationsResult {
+    /// List of returned issued asset migrations.
+    ///
+    /// > **Note**: the list is sorted in ascending order in regard to the returned `date` field.
+    pub asset_migrations: Vec<AssetMigrationEntry>,
+    /// Indicates whether there are more asset exports that satisfy the search criteria yet to be
+    ///  returned.
+    pub has_more: bool,
+}
+
 // Request data structures
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
@@ -1239,6 +1697,22 @@ pub(crate) struct ReissueAssetRequest {
 pub(crate) struct TransferAssetRequest {
     pub amount: f64,
     pub receiving_device: DeviceId,
+}
+
+#[derive(Debug, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExportAssetRequest {
+    pub token: NewForeignTokenInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<ExportAssetOptions>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MigrateAssetRequest {
+    pub migration: AssetMigration,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<MigrateAssetOptions>,
 }
 
 // Response data structures
@@ -1395,6 +1869,48 @@ pub(crate) struct RetrieveDeviceIdentificationInfoResponse {
 pub(crate) struct ListNotificationEventsResponse {
     pub status: String,
     pub data: ListNotificationEventsResult,
+}
+
+#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExportAssetResponse {
+    pub status: String,
+    pub data: ExportAssetResult,
+}
+
+#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MigrateAssetResponse {
+    pub status: String,
+    pub data: MigrateAssetResult,
+}
+
+#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AssetExportOutcomeResponse {
+    pub status: String,
+    pub data: AssetExportOutcomeResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AssetMigrationOutcomeResponse {
+    pub status: String,
+    pub data: AssetMigrationOutcomeResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListExportedAssetsResponse {
+    pub status: String,
+    pub data: ListExportedAssetsResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListAssetMigrationsResponse {
+    pub status: String,
+    pub data: ListAssetMigrationsResult,
 }
 
 #[cfg(test)]
@@ -2131,13 +2647,30 @@ mod tests {
         let asset_holder_entry: AssetHolderEntry = serde_json::from_str(json).unwrap();
 
         assert_eq!(asset_holder_entry, AssetHolderEntry {
-            holder: DeviceInfo {
+            holder: Some(DeviceInfo {
                 device_id: String::from("drc3XdxNtzoucpw9xiRp"),
                 name: None,
                 prod_unique_id: None,
-            },
+            }),
+            migrated: None,
             balance: AssetBalance {
                 total: 123.25,
+                unconfirmed: 0.0,
+            },
+        });
+    }
+
+    #[test]
+    fn it_deserialize_migrated_asset_holder_entry() {
+        let json = r#"{"migrated":true,"balance":{"total":34.75,"unconfirmed":0}}"#;
+
+        let asset_holder_entry: AssetHolderEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_holder_entry, AssetHolderEntry {
+            holder: None,
+            migrated: Some(true),
+            balance: AssetBalance {
+                total: 34.75,
                 unconfirmed: 0.0,
             },
         });
@@ -2498,6 +3031,365 @@ mod tests {
         let notification_event_str = NotificationEvent::UnknownEvent(String::from("anything")).to_string();
 
         assert_eq!(notification_event_str, "anything");
+    }
+
+    #[test]
+    fn it_deserialize_foreign_blockchain() {
+        let json = r#""polygon""#;
+
+        let foreign_blockchain: ForeignBlockchain = serde_json::from_str(json).unwrap();
+
+        assert_eq!(foreign_blockchain, ForeignBlockchain::Polygon);
+    }
+
+    #[test]
+    fn it_serialize_foreign_blockchain() {
+        let foreign_blockchain = ForeignBlockchain::Ethereum;
+
+        let json = serde_json::to_string(&foreign_blockchain).unwrap();
+
+        assert_eq!(json, r#""ethereum""#);
+    }
+
+    #[test]
+    fn it_convert_foreign_blockchain() {
+        let foreign_blockchain_str = ForeignBlockchain::Binance.to_string();
+
+        assert_eq!(foreign_blockchain_str, "binance");
+    }
+
+    #[test]
+    fn it_serialize_new_foreign_token_info() {
+        let new_foreign_token_info = NewForeignTokenInfo {
+            name: String::from("Catenis test token #10"),
+            symbol: String::from("CTK10"),
+        };
+
+        let json = serde_json::to_string(&new_foreign_token_info).unwrap();
+
+        assert_eq!(json, r#"{"name":"Catenis test token #10","symbol":"CTK10"}"#);
+    }
+
+    #[test]
+    fn it_serialize_foreign_consumption_profile() {
+        let foreign_consumption_profile = ForeignConsumptionProfile::Average;
+
+        let json = serde_json::to_string(&foreign_consumption_profile).unwrap();
+
+        assert_eq!(json, r#""average""#);
+    }
+
+    #[test]
+    fn it_serialize_export_asset_options_no_opts() {
+        let export_asset_options = ExportAssetOptions {
+            consumption_profile: None,
+            estimate_only: None,
+        };
+
+        let json = serde_json::to_string(&export_asset_options).unwrap();
+
+        assert_eq!(json, r#"{}"#);
+    }
+
+    #[test]
+    fn it_serialize_export_asset_options_all_opts() {
+        let export_asset_options = ExportAssetOptions {
+            consumption_profile: Some(ForeignConsumptionProfile::Fast),
+            estimate_only: Some(true),
+        };
+
+        let json = serde_json::to_string(&export_asset_options).unwrap();
+
+        assert_eq!(json, r#"{"consumptionProfile":"fast","estimateOnly":true}"#);
+    }
+
+    #[test]
+    fn it_deserialize_foreign_transaction_info_no_opts() {
+        let json = r#"{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":true}"#;
+
+        let foreign_transaction_info: ForeignTransactionInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(foreign_transaction_info, ForeignTransactionInfo {
+            txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+            is_pending: true,
+            success: None,
+            error: None
+        });
+    }
+
+    #[test]
+    fn it_deserialize_foreign_transaction_info_all_opts() {
+        let json = r#"{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":false,"success":false,"error":"Simulated error"}"#;
+
+        let foreign_transaction_info: ForeignTransactionInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(foreign_transaction_info, ForeignTransactionInfo {
+            txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+            is_pending: false,
+            success: Some(false),
+            error: Some(String::from("Simulated error")),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_foreign_token_info_no_opts() {
+        let json = r#"{"name":"Catenis test token #10","symbol":"CTK10"}"#;
+
+        let foreign_token_info: ForeignTokenInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(foreign_token_info, ForeignTokenInfo {
+            name: String::from("Catenis test token #10"),
+            symbol: String::from("CTK10"),
+            id: None
+        });
+    }
+
+    #[test]
+    fn it_deserialize_foreign_token_info_all_opts() {
+        let json = r#"{"name":"Catenis test token #10","symbol":"CTK10","id":"0x537580164Ba9DB2e8C254a38E254ce15d07fDef9"}"#;
+
+        let foreign_token_info: ForeignTokenInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(foreign_token_info, ForeignTokenInfo {
+            name: String::from("Catenis test token #10"),
+            symbol: String::from("CTK10"),
+            id: Some(String::from("0x537580164Ba9DB2e8C254a38E254ce15d07fDef9")),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_export_status() {
+        let json = r#""pending""#;
+
+        let asset_export_status: AssetExportStatus = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_export_status, AssetExportStatus::Pending);
+    }
+
+    #[test]
+    fn it_serialize_asset_export_status() {
+        let asset_export_status = AssetExportStatus::Success;
+
+        let json = serde_json::to_string(&asset_export_status).unwrap();
+
+        assert_eq!(json, r#""success""#);
+    }
+
+    #[test]
+    fn it_convert_asset_export_status() {
+        let asset_export_status_str = AssetExportStatus::Error.to_string();
+
+        assert_eq!(asset_export_status_str, "error");
+    }
+
+    #[test]
+    fn it_deserialize_asset_migration_direction() {
+        let json = r#""outward""#;
+
+        let asset_migration_direction: AssetMigrationDirection = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_migration_direction, AssetMigrationDirection::Outward);
+    }
+
+    #[test]
+    fn it_serialize_asset_migration_direction() {
+        let asset_migration_direction = AssetMigrationDirection::Inward;
+
+        let json = serde_json::to_string(&asset_migration_direction).unwrap();
+
+        assert_eq!(json, r#""inward""#);
+    }
+
+    #[test]
+    fn it_convert_asset_migration_direction() {
+        let asset_migration_direction_str = AssetMigrationDirection::Outward.to_string();
+
+        assert_eq!(asset_migration_direction_str, "outward");
+    }
+
+    #[test]
+    fn it_serialize_asset_migration_info_no_opts() {
+        let asset_migration_info = AssetMigrationInfo {
+            direction: AssetMigrationDirection::Outward,
+            amount: 123.45,
+            dest_address: None,
+        };
+
+        let json = serde_json::to_string(&asset_migration_info).unwrap();
+
+        assert_eq!(json, r#"{"direction":"outward","amount":123.45}"#);
+    }
+
+    #[test]
+    fn it_serialize_asset_migration_info_all_opts() {
+        let asset_migration_info = AssetMigrationInfo {
+            direction: AssetMigrationDirection::Outward,
+            amount: 123.45,
+            dest_address: Some(String::from("0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943")),
+        };
+
+        let json = serde_json::to_string(&asset_migration_info).unwrap();
+
+        assert_eq!(json, r#"{"direction":"outward","amount":123.45,"destAddress":"0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943"}"#);
+    }
+
+    #[test]
+    fn it_serialize_migration_info_variant() {
+        let migration = AssetMigration::Info(AssetMigrationInfo {
+            direction: AssetMigrationDirection::Outward,
+            amount: 123.45,
+            dest_address: Some(String::from("0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943")),
+        });
+
+        let json = serde_json::to_string(&migration).unwrap();
+
+        assert_eq!(json, r#"{"direction":"outward","amount":123.45,"destAddress":"0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943"}"#);
+    }
+
+    #[test]
+    fn it_serialize_migration_id_variant() {
+        let migration = AssetMigration::ID(String::from("gSLb9FTdGxgSLufuNzhR"));
+
+        let json = serde_json::to_string(&migration).unwrap();
+
+        assert_eq!(json, r#""gSLb9FTdGxgSLufuNzhR""#);
+    }
+
+    #[test]
+    fn it_serialize_migrate_asset_options_no_opts() {
+        let migrate_asset_options = MigrateAssetOptions {
+            consumption_profile: None,
+            estimate_only: None,
+        };
+
+        let json = serde_json::to_string(&migrate_asset_options).unwrap();
+
+        assert_eq!(json, r#"{}"#);
+    }
+
+    #[test]
+    fn it_serialize_migrate_asset_options_all_opts() {
+        let migrate_asset_options = MigrateAssetOptions {
+            consumption_profile: Some(ForeignConsumptionProfile::Fastest),
+            estimate_only: Some(true),
+        };
+
+        let json = serde_json::to_string(&migrate_asset_options).unwrap();
+
+        assert_eq!(json, r#"{"consumptionProfile":"fastest","estimateOnly":true}"#);
+    }
+
+    #[test]
+    fn it_deserialize_catenis_service_status() {
+        let json = r#""awaiting""#;
+
+        let catenis_service_status: CatenisServiceStatus = serde_json::from_str(json).unwrap();
+
+        assert_eq!(catenis_service_status, CatenisServiceStatus::Awaiting);
+    }
+
+    #[test]
+    fn it_deserialize_catenis_service_info_no_opts() {
+        let json = r#"{"status":"awaiting"}"#;
+
+        let catenis_service_info: CatenisServiceInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(catenis_service_info, CatenisServiceInfo {
+            status: CatenisServiceStatus::Awaiting,
+            txid: None,
+            error: None,
+        });
+    }
+
+    #[test]
+    fn it_deserialize_catenis_service_info_all_opts() {
+        let json = r#"{"status":"fulfilled","txid":"61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf","error":"Simulated error"}"#;
+
+        let catenis_service_info: CatenisServiceInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(catenis_service_info, CatenisServiceInfo {
+            status: CatenisServiceStatus::Fulfilled,
+            txid: Some(String::from("61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf")),
+            error: Some(String::from("Simulated error")),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_migration_status() {
+        let json = r#""pending""#;
+
+        let asset_migration_status: AssetMigrationStatus = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_migration_status, AssetMigrationStatus::Pending);
+    }
+
+    #[test]
+    fn it_serialize_asset_migration_status() {
+        let asset_migration_status = AssetMigrationStatus::Interrupted;
+
+        let json = serde_json::to_string(&asset_migration_status).unwrap();
+
+        assert_eq!(json, r#""interrupted""#);
+    }
+
+    #[test]
+    fn it_convert_asset_migration_status() {
+        let asset_migration_status_str = AssetMigrationStatus::Success.to_string();
+
+        assert_eq!(asset_migration_status_str, "success");
+    }
+
+    #[test]
+    fn it_deserialize_asset_export_entry() {
+        let json = r#"{"assetId": "aH2AkrrL55GcThhPNa3J","foreignBlockchain": "ethereum","foreignTransaction": {"txid": "0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending": false,"success": true},"token": {"name": "Catenis test token #10","symbol": "CTK10","id": "0x537580164Ba9DB2e8C254a38E254ce15d07fDef9"},"status": "success","date": "2021-08-03T18:41:27.679Z"}"#;
+
+        let asset_export_entry: AssetExportEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_export_entry, AssetExportEntry {
+            asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+            foreign_blockchain: ForeignBlockchain::Ethereum,
+            foreign_transaction: ForeignTransactionInfo {
+                txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                is_pending: false,
+                success: Some(true),
+                error: None,
+            },
+            token: ForeignTokenInfo {
+                name: String::from("Catenis test token #10"),
+                symbol: String::from("CTK10"),
+                id: Some(String::from("0x537580164Ba9DB2e8C254a38E254ce15d07fDef9")),
+            },
+            status: AssetExportStatus::Success,
+            date: "2021-08-03T18:41:27.679Z".into(),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_migration_entry() {
+        let json = r#"{"migrationId": "gSLb9FTdGxgSLufuNzhR","assetId": "aH2AkrrL55GcThhPNa3J","foreignBlockchain": "ethereum","direction": "inward","amount": 4,"catenisService": {"status": "fulfilled","txid": "26d45a275447caf36e0fbcc32f880f37d3aadb37ddceccc39cd8972a7933e3f4"},"foreignTransaction": {"txid": "0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee","isPending": false,"success": true},"status": "success","date": "2021-08-03T19:11:27.804Z"}"#;
+
+        let asset_migration_entry: AssetMigrationEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_migration_entry, AssetMigrationEntry {
+            migration_id: String::from("gSLb9FTdGxgSLufuNzhR"),
+            asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+            foreign_blockchain: ForeignBlockchain::Ethereum,
+            direction: AssetMigrationDirection::Inward,
+            amount: 4.0,
+            catenis_service: CatenisServiceInfo {
+                status: CatenisServiceStatus::Fulfilled,
+                txid: Some(String::from("26d45a275447caf36e0fbcc32f880f37d3aadb37ddceccc39cd8972a7933e3f4")),
+                error: None,
+            },
+            foreign_transaction: ForeignTransactionInfo {
+                txid: String::from("0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee"),
+                is_pending: false,
+                success: Some(true),
+                error: None,
+            },
+            status: AssetMigrationStatus::Success,
+            date: "2021-08-03T19:11:27.804Z".into(),
+        });
     }
 
     #[test]
@@ -2876,31 +3768,41 @@ mod tests {
 
     #[test]
     fn it_deserialize_list_asset_holders_result() {
-        let json = r#"{"assetHolders":[{"holder":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"balance":{"total":123.25,"unconfirmed":0}},{"holder":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"balance":{"total":150,"unconfirmed":0}}],"hasMore":false}"#;
+        let json = r#"{"assetHolders":[{"holder":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"balance":{"total":123.25,"unconfirmed":0}},{"holder":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"balance":{"total":150,"unconfirmed":0}},{"migrated":true,"balance":{"total":34.75,"unconfirmed":0}}],"hasMore":false}"#;
 
         let list_asset_holders_result: ListAssetHoldersResult = serde_json::from_str(json).unwrap();
 
         assert_eq!(list_asset_holders_result, ListAssetHoldersResult {
             asset_holders: vec![
                 AssetHolderEntry {
-                    holder: DeviceInfo {
+                    holder: Some(DeviceInfo {
                         device_id: String::from("drc3XdxNtzoucpw9xiRp"),
                         name: None,
                         prod_unique_id: None,
-                    },
+                    }),
+                    migrated: None,
                     balance: AssetBalance {
                         total: 123.25,
                         unconfirmed: 0.0,
                     },
                 },
                 AssetHolderEntry {
-                    holder: DeviceInfo {
+                    holder: Some(DeviceInfo {
                         device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
                         name: None,
                         prod_unique_id: None,
-                    },
+                    }),
+                    migrated: None,
                     balance: AssetBalance {
                         total: 150.0,
+                        unconfirmed: 0.0,
+                    },
+                },
+                AssetHolderEntry {
+                    holder: None,
+                    migrated: Some(true),
+                    balance: AssetBalance {
+                        total: 34.75,
                         unconfirmed: 0.0,
                     },
                 },
@@ -3042,6 +3944,236 @@ mod tests {
                 String::from("Progress of asynchronous message processing has come to an end"),
             ].into_iter()).collect(),
         );
+    }
+
+    #[test]
+    fn it_deserialize_export_asset_result_no_opts() {
+        let json = r#"{}"#;
+
+        let export_asset_result: ExportAssetResult = serde_json::from_str(json).unwrap();
+
+        assert_eq!(export_asset_result, ExportAssetResult {
+            foreign_transaction: None,
+            token: None,
+            status: None,
+            date: None,
+            estimated_price: None,
+        });
+    }
+
+    #[test]
+    fn it_deserialize_export_asset_result_all_opts() {
+        let json = r#"{"foreignTransaction":{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":true},"token":{"name":"Catenis test token #10","symbol":"CTK10"},"status":"pending","date":"2021-08-03T18:41:11.781Z","estimatedPrice":"0.05850782"}"#;
+
+        let export_asset_result: ExportAssetResult = serde_json::from_str(json).unwrap();
+
+        assert_eq!(export_asset_result, ExportAssetResult {
+            foreign_transaction: Some(ForeignTransactionInfo {
+                txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                is_pending: true,
+                success: None,
+                error: None,
+            }),
+            token: Some(ForeignTokenInfo {
+                name: String::from("Catenis test token #10"),
+                symbol: String::from("CTK10"),
+                id: None,
+            }),
+            status: Some(AssetExportStatus::Pending),
+            date: Some("2021-08-03T18:41:11.781Z".into()),
+            estimated_price: Some(String::from("0.05850782")),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_migrate_asset_result_no_opts() {
+        let json = r#"{}"#;
+
+        let migrate_asset_result: MigrateAssetResult = serde_json::from_str(json).unwrap();
+
+        assert_eq!(migrate_asset_result, MigrateAssetResult {
+            migration_id: None,
+            catenis_service: None,
+            foreign_transaction: None,
+            status: None,
+            date: None,
+            estimated_price: None,
+        });
+    }
+
+    #[test]
+    fn it_deserialize_migrate_asset_result_all_opts() {
+        let json = r#"{"migrationId":"gq8x3efLpEXTkGQchHTb","catenisService":{"status":"fulfilled","txid":"61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf"},"foreignTransaction":{"txid":"0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7","isPending":true},"status":"pending","date":"2021-08-03T18:51:26.631Z","estimatedPrice":"0.001723913"}"#;
+
+        let migrate_asset_result: MigrateAssetResult = serde_json::from_str(json).unwrap();
+
+        assert_eq!(migrate_asset_result, MigrateAssetResult {
+            migration_id: Some(String::from("gq8x3efLpEXTkGQchHTb")),
+            catenis_service: Some(CatenisServiceInfo {
+                status: CatenisServiceStatus::Fulfilled,
+                txid: Some(String::from("61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf")),
+                error: None,
+            }),
+            foreign_transaction: Some(ForeignTransactionInfo {
+                txid: String::from("0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7"),
+                is_pending: true,
+                success: None,
+                error: None,
+            }),
+            status: Some(AssetMigrationStatus::Pending),
+            date: Some("2021-08-03T18:51:26.631Z".into()),
+            estimated_price: Some(String::from("0.001723913")),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_export_outcome_result() {
+        let json = r#"{"foreignTransaction":{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":false,"success":true},"token":{"name":"Catenis test token #10","symbol":"CTK10","id":"0x537580164Ba9DB2e8C254a38E254ce15d07fDef9"},"status":"success","date":"2021-08-03T18:41:27.679Z"}"#;
+
+        let asset_export_outcome_result: AssetExportOutcomeResult = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_export_outcome_result, AssetExportOutcomeResult {
+            foreign_transaction: ForeignTransactionInfo {
+                txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                is_pending: false,
+                success: Some(true),
+                error: None,
+            },
+            token: ForeignTokenInfo {
+                name: String::from("Catenis test token #10"),
+                symbol: String::from("CTK10"),
+                id: Some(String::from("0x537580164Ba9DB2e8C254a38E254ce15d07fDef9")),
+            },
+            status: AssetExportStatus::Success,
+            date: "2021-08-03T18:41:27.679Z".into(),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_migration_outcome_result() {
+        let json = r#"{"assetId":"aH2AkrrL55GcThhPNa3J","foreignBlockchain":"ethereum","direction":"outward","amount":10,"catenisService":{"status":"fulfilled","txid":"61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf"},"foreignTransaction":{"txid":"0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7","isPending":false,"success":true},"status":"success","date":"2021-08-03T18:51:55.591Z"}"#;
+
+        let asset_migration_outcome_result: AssetMigrationOutcomeResult = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_migration_outcome_result, AssetMigrationOutcomeResult {
+            asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+            foreign_blockchain: ForeignBlockchain::Ethereum,
+            direction: AssetMigrationDirection::Outward,
+            amount: 10.0,
+            catenis_service: CatenisServiceInfo {
+                status: CatenisServiceStatus::Fulfilled,
+                txid: Some(String::from("61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf")),
+                error: None,
+            },
+            foreign_transaction: ForeignTransactionInfo {
+                txid: String::from("0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7"),
+                is_pending: false,
+                success: Some(true),
+                error: None,
+            },
+            status: AssetMigrationStatus::Success,
+            date: "2021-08-03T18:51:55.591Z".into(),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_list_exported_assets_result() {
+        let json = r#"{"exportedAssets":[{"assetId":"aH2AkrrL55GcThhPNa3J","foreignBlockchain":"ethereum","foreignTransaction":{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":false,"success":true},"token":{"name":"Catenis test token #10","symbol":"CTK10","id":"0x537580164Ba9DB2e8C254a38E254ce15d07fDef9"},"status":"success","date":"2021-08-03T18:41:27.679Z"},{"assetId":"aCSy24HLjKMbpnvJ8GTx","foreignBlockchain":"ethereum","foreignTransaction":{"txid":"0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a","isPending":false,"success":true},"token":{"name":"Catenis test token #11","symbol":"CTK11","id":"0x5cE78E7204DD8f7d86142fAaA694d5354b997600"},"status":"success","date":"2021-08-10T12:57:24.217Z"}],"hasMore":false}"#;
+
+        let list_exported_assets_result: ListExportedAssetsResult = serde_json::from_str(json).unwrap();
+
+        assert_eq!(list_exported_assets_result, ListExportedAssetsResult {
+            exported_assets: vec![
+                AssetExportEntry {
+                    asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    token: ForeignTokenInfo {
+                        name: String::from("Catenis test token #10"),
+                        symbol: String::from("CTK10"),
+                        id: Some(String::from("0x537580164Ba9DB2e8C254a38E254ce15d07fDef9")),
+                    },
+                    status: AssetExportStatus::Success,
+                    date: "2021-08-03T18:41:27.679Z".into(),
+                },
+                AssetExportEntry {
+                    asset_id: String::from("aCSy24HLjKMbpnvJ8GTx"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    token: ForeignTokenInfo {
+                        name: String::from("Catenis test token #11"),
+                        symbol: String::from("CTK11"),
+                        id: Some(String::from("0x5cE78E7204DD8f7d86142fAaA694d5354b997600")),
+                    },
+                    status: AssetExportStatus::Success,
+                    date: "2021-08-10T12:57:24.217Z".into(),
+                },
+            ],
+            has_more: false,
+        });
+    }
+    
+    #[test]
+    fn it_deserialize_list_asset_migrations_result() {
+        let json = r#"{"assetMigrations":[{"migrationId":"gSLb9FTdGxgSLufuNzhR","assetId":"aH2AkrrL55GcThhPNa3J","foreignBlockchain":"ethereum","direction":"inward","amount":4,"catenisService":{"status":"fulfilled","txid":"26d45a275447caf36e0fbcc32f880f37d3aadb37ddceccc39cd8972a7933e3f4"},"foreignTransaction":{"txid":"0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee","isPending":false,"success":true},"status":"success","date":"2021-08-03T19:11:27.804Z"},{"migrationId":"gTQ8Qf5W6kdmdYdEEoD9","assetId":"aCSy24HLjKMbpnvJ8GTx","foreignBlockchain":"ethereum","direction":"outward","amount":5,"catenisService":{"status":"fulfilled","txid":"7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777"},"foreignTransaction":{"txid":"0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9","isPending":false,"success":true},"status":"success","date":"2021-08-10T13:00:08.656Z"}],"hasMore":false}"#;
+        
+        let list_asset_migrations_result: ListAssetMigrationsResult = serde_json::from_str(json).unwrap();
+        
+        assert_eq!(list_asset_migrations_result, ListAssetMigrationsResult {
+            asset_migrations: vec![
+                AssetMigrationEntry {
+                    migration_id: String::from("gSLb9FTdGxgSLufuNzhR"),
+                    asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    direction: AssetMigrationDirection::Inward,
+                    amount: 4.0,
+                    catenis_service: CatenisServiceInfo {
+                        status: CatenisServiceStatus::Fulfilled,
+                        txid: Some(String::from("26d45a275447caf36e0fbcc32f880f37d3aadb37ddceccc39cd8972a7933e3f4")),
+                        error: None,
+                    },
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    status: AssetMigrationStatus::Success,
+                    date: "2021-08-03T19:11:27.804Z".into(),
+                },
+                AssetMigrationEntry {
+                    migration_id: String::from("gTQ8Qf5W6kdmdYdEEoD9"),
+                    asset_id: String::from("aCSy24HLjKMbpnvJ8GTx"),
+                    foreign_blockchain: ForeignBlockchain::Ethereum,
+                    direction: AssetMigrationDirection::Outward,
+                    amount: 5.0,
+                    catenis_service: CatenisServiceInfo {
+                        status: CatenisServiceStatus::Fulfilled,
+                        txid: Some(String::from("7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777")),
+                        error: None,
+                    },
+                    foreign_transaction: ForeignTransactionInfo {
+                        txid: String::from("0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9"),
+                        is_pending: false,
+                        success: Some(true),
+                        error: None,
+                    },
+                    status: AssetMigrationStatus::Success,
+                    date: "2021-08-10T13:00:08.656Z".into(),
+                },
+            ],
+            has_more: false,
+        });
     }
 
     #[test]
@@ -3200,6 +4332,101 @@ mod tests {
         let json = serde_json::to_string(&transfer_asset_request).unwrap();
 
         assert_eq!(json, r#"{"amount":54.0,"receivingDevice":{"id":"drc3XdxNtzoucpw9xiRp"}}"#);
+    }
+
+    #[test]
+    fn it_serialize_export_asset_request_no_opts() {
+        let export_asset_request = ExportAssetRequest {
+            token: NewForeignTokenInfo {
+                name: String::from("Catenis test token #11"),
+                symbol: String::from("CTK11"),
+            },
+            options: None,
+        };
+
+        let json = serde_json::to_string(&export_asset_request).unwrap();
+
+        assert_eq!(json, r#"{"token":{"name":"Catenis test token #11","symbol":"CTK11"}}"#);
+    }
+
+    #[test]
+    fn it_serialize_export_asset_request_all_opts() {
+        let export_asset_request = ExportAssetRequest {
+            token: NewForeignTokenInfo {
+                name: String::from("Catenis test token #11"),
+                symbol: String::from("CTK11"),
+            },
+            options: Some(ExportAssetOptions {
+                consumption_profile: Some(ForeignConsumptionProfile::Average),
+                estimate_only: Some(true),
+            }),
+        };
+
+        let json = serde_json::to_string(&export_asset_request).unwrap();
+
+        assert_eq!(json, r#"{"token":{"name":"Catenis test token #11","symbol":"CTK11"},"options":{"consumptionProfile":"average","estimateOnly":true}}"#);
+    }
+
+    #[test]
+    fn it_serialize_migrate_asset_request_migration_info_no_opts() {
+        let migrate_asset_request = MigrateAssetRequest {
+            migration: AssetMigration::Info(AssetMigrationInfo {
+                direction: AssetMigrationDirection::Inward,
+                amount: 13.0,
+                dest_address: None,
+            }),
+            options: None,
+        };
+
+        let json = serde_json::to_string(&migrate_asset_request).unwrap();
+
+        assert_eq!(json, r#"{"migration":{"direction":"inward","amount":13.0}}"#);
+    }
+
+    #[test]
+    fn it_serialize_migrate_asset_request_migration_info_all_opts() {
+        let migrate_asset_request = MigrateAssetRequest {
+            migration: AssetMigration::Info(AssetMigrationInfo {
+                direction: AssetMigrationDirection::Outward,
+                amount: 27.0,
+                dest_address: Some(String::from("0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943")),
+            }),
+            options: Some(MigrateAssetOptions {
+                consumption_profile: Some(ForeignConsumptionProfile::Average),
+                estimate_only: Some(true),
+            }),
+        };
+
+        let json = serde_json::to_string(&migrate_asset_request).unwrap();
+
+        assert_eq!(json, r#"{"migration":{"direction":"outward","amount":27.0,"destAddress":"0xe247c9BfDb17e7D8Ae60a744843ffAd19C784943"},"options":{"consumptionProfile":"average","estimateOnly":true}}"#);
+    }
+
+    #[test]
+    fn it_serialize_migrate_asset_request_migration_id_no_opts() {
+        let migrate_asset_request = MigrateAssetRequest {
+            migration: AssetMigration::ID(String::from("gSLb9FTdGxgSLufuNzhR")),
+            options: None,
+        };
+
+        let json = serde_json::to_string(&migrate_asset_request).unwrap();
+
+        assert_eq!(json, r#"{"migration":"gSLb9FTdGxgSLufuNzhR"}"#);
+    }
+
+    #[test]
+    fn it_serialize_migrate_asset_request_migration_id_all_opts() {
+        let migrate_asset_request = MigrateAssetRequest {
+            migration: AssetMigration::ID(String::from("gSLb9FTdGxgSLufuNzhR")),
+            options: Some(MigrateAssetOptions {
+                consumption_profile: Some(ForeignConsumptionProfile::Average),
+                estimate_only: Some(true),
+            }),
+        };
+
+        let json = serde_json::to_string(&migrate_asset_request).unwrap();
+
+        assert_eq!(json, r#"{"migration":"gSLb9FTdGxgSLufuNzhR","options":{"consumptionProfile":"average","estimateOnly":true}}"#);
     }
 
     #[test]
@@ -3538,7 +4765,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_list_asset_holders_response() {
-        let json = r#"{"status":"success","data":{"assetHolders":[{"holder":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"balance":{"total":123.25,"unconfirmed":0}},{"holder":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"balance":{"total":150,"unconfirmed":0}}],"hasMore":false}}"#;
+        let json = r#"{"status":"success","data":{"assetHolders":[{"holder":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"balance":{"total":123.25,"unconfirmed":0}},{"holder":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"balance":{"total":150,"unconfirmed":0}},{"migrated":true,"balance":{"total":34.75,"unconfirmed":0}}],"hasMore":false}}"#;
 
         let list_asset_holders_response: ListAssetHoldersResponse = serde_json::from_str(json).unwrap();
 
@@ -3547,24 +4774,34 @@ mod tests {
             data: ListAssetHoldersResult {
                 asset_holders: vec![
                     AssetHolderEntry {
-                        holder: DeviceInfo {
+                        holder: Some(DeviceInfo {
                             device_id: String::from("drc3XdxNtzoucpw9xiRp"),
                             name: None,
                             prod_unique_id: None,
-                        },
+                        }),
+                        migrated: None,
                         balance: AssetBalance {
                             total: 123.25,
                             unconfirmed: 0.0,
                         },
                     },
                     AssetHolderEntry {
-                        holder: DeviceInfo {
+                        holder: Some(DeviceInfo {
                             device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
                             name: None,
                             prod_unique_id: None,
-                        },
+                        }),
+                        migrated: None,
                         balance: AssetBalance {
                             total: 150.0,
+                            unconfirmed: 0.0,
+                        },
+                    },
+                    AssetHolderEntry {
+                        holder: None,
+                        migrated: Some(true),
+                        balance: AssetBalance {
+                            total: 34.75,
                             unconfirmed: 0.0,
                         },
                     },
@@ -3711,5 +4948,222 @@ mod tests {
                 ].into_iter()).collect(),
             },
         );
+    }
+
+    #[test]
+    fn it_deserialize_export_asset_response() {
+        let json = r#"{"status":"success","data":{"foreignTransaction":{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":true},"token":{"name":"Catenis test token #10","symbol":"CTK10"},"status":"pending","date":"2021-08-03T18:41:11.781Z"}}"#;
+
+        let export_asset_response: ExportAssetResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(export_asset_response, ExportAssetResponse {
+            status: String::from("success"),
+            data: ExportAssetResult {
+                foreign_transaction: Some(ForeignTransactionInfo {
+                    txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                    is_pending: true,
+                    success: None,
+                    error: None,
+                }),
+                token: Some(ForeignTokenInfo {
+                    name: String::from("Catenis test token #10"),
+                    symbol: String::from("CTK10"),
+                    id: None,
+                }),
+                status: Some(AssetExportStatus::Pending),
+                date: Some("2021-08-03T18:41:11.781Z".into()),
+                estimated_price: None,
+            },
+        });
+    }
+
+    #[test]
+    fn it_deserialize_migrate_asset_response() {
+        let json = r#"{"status":"success","data":{"migrationId":"gq8x3efLpEXTkGQchHTb","catenisService":{"status":"fulfilled","txid":"61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf"},"foreignTransaction":{"txid":"0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7","isPending":true},"status":"pending","date":"2021-08-03T18:51:26.631Z"}}"#;
+
+        let migrate_asset_response: MigrateAssetResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(migrate_asset_response, MigrateAssetResponse {
+            status: String::from("success"),
+            data: MigrateAssetResult {
+                migration_id: Some(String::from("gq8x3efLpEXTkGQchHTb")),
+                catenis_service: Some(CatenisServiceInfo {
+                    status: CatenisServiceStatus::Fulfilled,
+                    txid: Some(String::from("61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf")),
+                    error: None,
+                }),
+                foreign_transaction: Some(ForeignTransactionInfo {
+                    txid: String::from("0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7"),
+                    is_pending: true,
+                    success: None,
+                    error: None,
+                }),
+                status: Some(AssetMigrationStatus::Pending),
+                date: Some("2021-08-03T18:51:26.631Z".into()),
+                estimated_price: None,
+            },
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_export_outcome_response() {
+        let json = r#"{"status":"success","data":{"foreignTransaction":{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":false,"success":true},"token":{"name":"Catenis test token #10","symbol":"CTK10","id":"0x537580164Ba9DB2e8C254a38E254ce15d07fDef9"},"status":"success","date":"2021-08-03T18:41:27.679Z"}}"#;
+
+        let asset_export_outcome_response: AssetExportOutcomeResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_export_outcome_response, AssetExportOutcomeResponse {
+            status: String::from("success"),
+            data: AssetExportOutcomeResult {
+                foreign_transaction: ForeignTransactionInfo {
+                    txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                    is_pending: false,
+                    success: Some(true),
+                    error: None,
+                },
+                token: ForeignTokenInfo {
+                    name: String::from("Catenis test token #10"),
+                    symbol: String::from("CTK10"),
+                    id: Some(String::from("0x537580164Ba9DB2e8C254a38E254ce15d07fDef9")),
+                },
+                status: AssetExportStatus::Success,
+                date: "2021-08-03T18:41:27.679Z".into(),
+            },
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_migration_outcome_response() {
+        let json = r#"{"status":"success","data":{"assetId":"aH2AkrrL55GcThhPNa3J","foreignBlockchain":"ethereum","direction":"outward","amount":10,"catenisService":{"status":"fulfilled","txid":"61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf"},"foreignTransaction":{"txid":"0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7","isPending":false,"success":true},"status":"success","date":"2021-08-03T18:51:55.591Z"}}"#;
+
+        let assert_migration_outcome_response: AssetMigrationOutcomeResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(assert_migration_outcome_response, AssetMigrationOutcomeResponse {
+            status: String::from("success"),
+            data: AssetMigrationOutcomeResult {
+                asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+                foreign_blockchain: ForeignBlockchain::Ethereum,
+                direction: AssetMigrationDirection::Outward,
+                amount: 10.0,
+                catenis_service: CatenisServiceInfo {
+                    status: CatenisServiceStatus::Fulfilled,
+                    txid: Some(String::from("61fcb4feb64ecf3b39b4bb6d64eb9cc68a58ba1d892f981ef568d07b7aa11fdf")),
+                    error: None,
+                },
+                foreign_transaction: ForeignTransactionInfo {
+                    txid: String::from("0x212ab54f136a6fc1deae9ec217ef2d0417615178777131e8bb6958447fd20fe7"),
+                    is_pending: false,
+                    success: Some(true),
+                    error: None,
+                },
+                status: AssetMigrationStatus::Success,
+                date: "2021-08-03T18:51:55.591Z".into(),
+            },
+        });
+    }
+
+    #[test]
+    fn it_deserialize_list_exported_assets_response() {
+        let json = r#"{"status":"success","data":{"exportedAssets":[{"assetId":"aH2AkrrL55GcThhPNa3J","foreignBlockchain":"ethereum","foreignTransaction":{"txid":"0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a","isPending":false,"success":true},"token":{"name":"Catenis test token #10","symbol":"CTK10","id":"0x537580164Ba9DB2e8C254a38E254ce15d07fDef9"},"status":"success","date":"2021-08-03T18:41:27.679Z"},{"assetId":"aCSy24HLjKMbpnvJ8GTx","foreignBlockchain":"ethereum","foreignTransaction":{"txid":"0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a","isPending":false,"success":true},"token":{"name":"Catenis test token #11","symbol":"CTK11","id":"0x5cE78E7204DD8f7d86142fAaA694d5354b997600"},"status":"success","date":"2021-08-10T12:57:24.217Z"}],"hasMore":false}}"#;
+
+        let list_exported_assets_response: ListExportedAssetsResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(list_exported_assets_response, ListExportedAssetsResponse {
+            status: String::from("success"),
+            data: ListExportedAssetsResult {
+                exported_assets: vec![
+                    AssetExportEntry {
+                        asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+                        foreign_blockchain: ForeignBlockchain::Ethereum,
+                        foreign_transaction: ForeignTransactionInfo {
+                            txid: String::from("0x1f14474f441557056055a186ccf6839bd4dfce79e0b134d77084b6ef4274dc1a"),
+                            is_pending: false,
+                            success: Some(true),
+                            error: None,
+                        },
+                        token: ForeignTokenInfo {
+                            name: String::from("Catenis test token #10"),
+                            symbol: String::from("CTK10"),
+                            id: Some(String::from("0x537580164Ba9DB2e8C254a38E254ce15d07fDef9")),
+                        },
+                        status: AssetExportStatus::Success,
+                        date: "2021-08-03T18:41:27.679Z".into(),
+                    },
+                    AssetExportEntry {
+                        asset_id: String::from("aCSy24HLjKMbpnvJ8GTx"),
+                        foreign_blockchain: ForeignBlockchain::Ethereum,
+                        foreign_transaction: ForeignTransactionInfo {
+                            txid: String::from("0x6299c35ccfa803ab0cb043e8d8ae4be8d7f3432d85f288ebb81e4d624e566b0a"),
+                            is_pending: false,
+                            success: Some(true),
+                            error: None,
+                        },
+                        token: ForeignTokenInfo {
+                            name: String::from("Catenis test token #11"),
+                            symbol: String::from("CTK11"),
+                            id: Some(String::from("0x5cE78E7204DD8f7d86142fAaA694d5354b997600")),
+                        },
+                        status: AssetExportStatus::Success,
+                        date: "2021-08-10T12:57:24.217Z".into(),
+                    },
+                ],
+                has_more: false,
+            },
+        });
+    }
+
+    #[test]
+    fn it_deserialize_list_asset_migrations_response() {
+        let json = r#"{"status":"success","data":{"assetMigrations":[{"migrationId":"gSLb9FTdGxgSLufuNzhR","assetId":"aH2AkrrL55GcThhPNa3J","foreignBlockchain":"ethereum","direction":"inward","amount":4,"catenisService":{"status":"fulfilled","txid":"26d45a275447caf36e0fbcc32f880f37d3aadb37ddceccc39cd8972a7933e3f4"},"foreignTransaction":{"txid":"0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee","isPending":false,"success":true},"status":"success","date":"2021-08-03T19:11:27.804Z"},{"migrationId":"gTQ8Qf5W6kdmdYdEEoD9","assetId":"aCSy24HLjKMbpnvJ8GTx","foreignBlockchain":"ethereum","direction":"outward","amount":5,"catenisService":{"status":"fulfilled","txid":"7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777"},"foreignTransaction":{"txid":"0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9","isPending":false,"success":true},"status":"success","date":"2021-08-10T13:00:08.656Z"}],"hasMore":false}}"#;
+
+        let list_asset_migrations_response: ListAssetMigrationsResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(list_asset_migrations_response, ListAssetMigrationsResponse {
+            status: String::from("success"),
+            data: ListAssetMigrationsResult {
+                asset_migrations: vec![
+                    AssetMigrationEntry {
+                        migration_id: String::from("gSLb9FTdGxgSLufuNzhR"),
+                        asset_id: String::from("aH2AkrrL55GcThhPNa3J"),
+                        foreign_blockchain: ForeignBlockchain::Ethereum,
+                        direction: AssetMigrationDirection::Inward,
+                        amount: 4.0,
+                        catenis_service: CatenisServiceInfo {
+                            status: CatenisServiceStatus::Fulfilled,
+                            txid: Some(String::from("26d45a275447caf36e0fbcc32f880f37d3aadb37ddceccc39cd8972a7933e3f4")),
+                            error: None,
+                        },
+                        foreign_transaction: ForeignTransactionInfo {
+                            txid: String::from("0x883a4d9e02713b177fdd26b33e871dc765db3c964f2b1ef8e6f97eca24d718ee"),
+                            is_pending: false,
+                            success: Some(true),
+                            error: None,
+                        },
+                        status: AssetMigrationStatus::Success,
+                        date: "2021-08-03T19:11:27.804Z".into(),
+                    },
+                    AssetMigrationEntry {
+                        migration_id: String::from("gTQ8Qf5W6kdmdYdEEoD9"),
+                        asset_id: String::from("aCSy24HLjKMbpnvJ8GTx"),
+                        foreign_blockchain: ForeignBlockchain::Ethereum,
+                        direction: AssetMigrationDirection::Outward,
+                        amount: 5.0,
+                        catenis_service: CatenisServiceInfo {
+                            status: CatenisServiceStatus::Fulfilled,
+                            txid: Some(String::from("7d6a20ee009ad2bcbf5c799ee4eac594e4447bdb5007250f8ba038de97f63777")),
+                            error: None,
+                        },
+                        foreign_transaction: ForeignTransactionInfo {
+                            txid: String::from("0x92fb47432e50b623441bb3b55dd65bf879183f87ea4913a16e75503c98792df9"),
+                            is_pending: false,
+                            success: Some(true),
+                            error: None,
+                        },
+                        status: AssetMigrationStatus::Success,
+                        date: "2021-08-10T13:00:08.656Z".into(),
+                    },
+                ],
+                has_more: false,
+            },
+        });
     }
 }

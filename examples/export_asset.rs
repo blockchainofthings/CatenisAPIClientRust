@@ -19,25 +19,21 @@ fn main() -> Result<()> {
         ],
     )?;
 
-    let target_device = DeviceId {
-        id: String::from("dv3htgvK7hjnKx3617Re"),
-        is_prod_unique_id: None,
-    };
+    let asset_id = "aH2AkrrL55GcThhPNa3J";
 
-    let result = ctn_client.send_message(
-        Message::Whole(String::from("This is only a test")),
-        target_device,
-        Some(SendMessageOptions {
-            encoding: Some(Encoding::UTF8),
-            encrypt: Some(true),
-            off_chain: Some(true),
-            storage: Some(Storage::Auto),
-            read_confirmation: Some(true),
-            async_: None,
-        }),
+    let result = ctn_client.export_asset(
+        asset_id,
+        ForeignBlockchain::Ethereum,
+        NewForeignTokenInfo {
+            name: String::from("Catenis test token #10"),
+            symbol: String::from("CTK10"),
+        },
+        None,
     )?;
 
-    println!("ID of sent message: {}", result.message_id.unwrap());
+    println!("Pending asset export: {:?}", result);
+
+    // Start polling for asset export outcome
 
     Ok(())
 }

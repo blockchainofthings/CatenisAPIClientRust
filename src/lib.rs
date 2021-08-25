@@ -2,7 +2,7 @@
 //!
 //! This library is used to make it easier to access the Catenis Enterprise API services.
 //!
-//! > **Note**: this release of the library targets **version 10.0** of the Catenis Enterprise API.
+//! > **Note**: this release of the library targets **version 0.11** of the Catenis Enterprise API.
 //!
 //! ## Usage
 //!
@@ -123,7 +123,7 @@ pub use notification::WsNotifyChannel;
 pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
 const API_BASE_URL_PATH: &str = "api/:version/";
-const DEFAULT_API_VERSION: ApiVersion = ApiVersion(0, 10);
+const DEFAULT_API_VERSION: ApiVersion = ApiVersion(0, 11);
 
 type KVList<'a> = &'a [(&'a str, &'a str)];
 
@@ -185,7 +185,7 @@ pub enum ClientOptions<'a> {
     Environment(Environment),
     /// Indicates whether a secure connection (HTTPS) should be used. Default value: **`true`**.
     Secure(bool),
-    /// Version of Catenis API to target. Default value: **`ApiVersion(10, 0)`**.
+    /// Version of Catenis API to target. Default value: **`ApiVersion(11, 0)`**.
     Version(ApiVersion),
     /// Indicates whether request body should be compressed. Default value: **`true`**.
     UseCompression(bool),

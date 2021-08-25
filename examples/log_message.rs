@@ -20,7 +20,7 @@ fn main() -> Result<()> {
     )?;
 
     let result = ctn_client.log_message(
-        "This is only a test",
+        Message::Whole(String::from("This is only a test")),
         Some(LogMessageOptions {
             encoding: Some(Encoding::UTF8),
             encrypt: Some(true),
