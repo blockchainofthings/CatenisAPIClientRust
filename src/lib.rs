@@ -1,8 +1,8 @@
 //! # Catenis API Client
 //!
-//! This library is used to make it easier to access the Catenis Enterprise API services.
+//! This library is used to make it easier to access the Catenis API services.
 //!
-//! > **Note**: this release of the library targets **version 0.11** of the Catenis Enterprise API.
+//! > **Note**: this release of the library targets **version 0.11** of the Catenis API.
 //!
 //! ## Usage
 //!

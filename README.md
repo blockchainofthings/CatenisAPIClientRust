@@ -1,9 +1,9 @@
 # Catenis API Client for Rust
 
-This library is used to make it easier to access the Catenis Enterprise API services from code
+This library is used to make it easier to access the Catenis API services from code
 written in the Rust programming language.
 
-> **Note**: this release of the library targets **version 0.11** of the Catenis Enterprise API.
+> **Note**: this release of the library targets **version 0.11** of the Catenis API.
 
 ## Documentation
 
@@ -86,9 +86,9 @@ let mut ctn_client = async_impl::CatenisClient::new_with_options(
 )?;
 ```
 
-## Catenis Enterprise API Documentation
+## Catenis API Documentation
 
-For further information on the Catenis Enterprise API, please reference the [Catenis Enterprise API Documentation](https://catenis.com/docs/api).
+For further information on the Catenis API, please reference the [Catenis API Documentation](https://catenis.com/docs/api).
 
 ## License
 
