@@ -218,7 +218,9 @@ impl CatenisClient {
 
     /// Call *Log Message* API method.
     ///
-    /// # Example
+    /// # Examples
+    ///
+    /// Log a message in a single call:
     ///
     /// ```no_run
     /// use catenis_api_client::{
@@ -241,7 +243,7 @@ impl CatenisClient {
     /// # )?;
     /// #
     /// let result = ctn_client.log_message(
-    ///     "My message",
+    ///     Message::Whole(String::from("My message")),
     ///     Some(LogMessageOptions {
     ///         encoding: Some(Encoding::UTF8),
     ///         encrypt: Some(true),
@@ -255,27 +257,8 @@ impl CatenisClient {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn log_message(&mut self, message: &str, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
-        let body = LogMessageRequest {
-            message: String::from(message),
-            options
-        };
-        let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request(
-            "messages/log",
-            body_json,
-            None::<KVList>,
-            None::<KVList>,
-        )?;
-
-        let res = self.sign_and_send_request(req)?;
-
-        Ok(Self::parse_response::<LogMessageResponse>(res)?.data)
-    }
-
-    /// Call *Log Message* API method passing message in chunks.
     ///
-    /// # Example
+    /// Log a message in chunks:
     ///
     /// ```no_run
     /// use catenis_api_client::{
@@ -306,8 +289,8 @@ impl CatenisClient {
     /// for idx in 0..message.len() {
     ///     let mut continuation_token = None;
     ///
-    ///     let result = ctn_client.log_chunked_message(
-    ///         ChunkedMessage {
+    ///     let result = ctn_client.log_message(
+    ///         Message::Chunk(ChunkedMessage {
     ///             data: Some(String::from(message[idx])),
     ///             is_final: Some(idx < message.len() - 1),
     ///             continuation_token: if let Some(token) = &continuation_token {
@@ -315,7 +298,7 @@ impl CatenisClient {
     ///             } else {
     ///                 None
     ///             },
-    ///         },
+    ///         }),
     ///         Some(LogMessageOptions {
     ///             encoding: Some(Encoding::UTF8),
     ///             encrypt: Some(true),
@@ -334,8 +317,8 @@ impl CatenisClient {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn log_chunked_message(&mut self, message: ChunkedMessage, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
-        let body = LogChunkedMessageRequest {
+    pub fn log_message(&mut self, message: Message, options: Option<LogMessageOptions>) -> Result<LogMessageResult> {
+        let body = LogMessageRequest {
             message,
             options
         };
@@ -354,7 +337,9 @@ impl CatenisClient {
 
     /// Call *Send Message* API method.
     ///
-    /// # Example
+    /// # Examples
+    ///
+    /// Send a message in a single call:
     ///
     /// ```no_run
     /// use catenis_api_client::{
@@ -377,7 +362,7 @@ impl CatenisClient {
     /// # )?;
     /// #
     /// let result = ctn_client.send_message(
-    ///     "My message",
+    ///     Message::Whole(String::from("My message")),
     ///     DeviceId {
     ///         id: String::from("d8YpQ7jgPBJEkBrnvp58"),
     ///         is_prod_unique_id: None,
@@ -396,28 +381,8 @@ impl CatenisClient {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn send_message(&mut self, message: &str, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
-        let body = SendMessageRequest {
-            message: String::from(message),
-            target_device,
-            options
-        };
-        let body_json = serde_json::to_string(&body)?;
-        let req = self.post_request(
-            "messages/send",
-            body_json,
-            None::<KVList>,
-            None::<KVList>,
-        )?;
-
-        let res = self.sign_and_send_request(req)?;
-
-        Ok(Self::parse_response::<SendMessageResponse>(res)?.data)
-    }
-
-    /// Call *Send Message* API method passing message in chunks.
     ///
-    /// # Example
+    /// Send a message in chunks:
     ///
     /// ```no_run
     /// use catenis_api_client::{
@@ -448,8 +413,8 @@ impl CatenisClient {
     /// for idx in 0..message.len() {
     ///     let mut continuation_token = None;
     ///
-    ///     let result = ctn_client.send_chunked_message(
-    ///         ChunkedMessage {
+    ///     let result = ctn_client.send_message(
+    ///         Message::Chunk(ChunkedMessage {
     ///             data: Some(String::from(message[idx])),
     ///             is_final: Some(idx < message.len() - 1),
     ///             continuation_token: if let Some(token) = &continuation_token {
@@ -457,7 +422,7 @@ impl CatenisClient {
     ///             } else {
     ///                 None
     ///             },
-    ///         },
+    ///         }),
     ///         DeviceId {
     ///             id: String::from("d8YpQ7jgPBJEkBrnvp58"),
     ///             is_prod_unique_id: None,
@@ -481,8 +446,8 @@ impl CatenisClient {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn send_chunked_message(&mut self, message: ChunkedMessage, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
-        let body = SendChunkedMessageRequest {
+    pub fn send_message(&mut self, message: Message, target_device: DeviceId, options: Option<SendMessageOptions>) -> Result<SendMessageResult> {
+        let body = SendMessageRequest {
             message,
             target_device,
             options
@@ -2242,7 +2207,7 @@ mod tests {
     }
 
     #[test]
-    fn it_log_message() {
+    fn it_log_message_whole() {
         // Simulate successful 'Log Message' API method response
 
         // Start HTTP server in success simulation node
@@ -2293,7 +2258,7 @@ mod tests {
         ).unwrap();
 
         let result = ctn_client.log_message(
-            "Test message #1",
+            Message::Whole(String::from("Test message #1")),
             Some(LogMessageOptions {
                 encoding: Some(Encoding::UTF8),
                 encrypt: Some(true),
@@ -2311,7 +2276,7 @@ mod tests {
     }
 
     #[test]
-    fn it_log_message_async() {
+    fn it_log_message_whole_async() {
         // Simulate successful 'Log Message' API method response
 
         // Start HTTP server in success simulation node
@@ -2362,7 +2327,7 @@ mod tests {
         ).unwrap();
 
         let result = ctn_client.log_message(
-            "Test message #1",
+            Message::Whole(String::from("Test message #1")),
             Some(LogMessageOptions {
                 encoding: Some(Encoding::UTF8),
                 encrypt: Some(true),
@@ -2380,7 +2345,7 @@ mod tests {
     }
 
     #[test]
-    fn it_log_chunked_message() {
+    fn it_log_message_chunk() {
         // Simulate successful 'Log Message' API method response
 
         // Start HTTP server in success simulation node
@@ -2430,12 +2395,12 @@ mod tests {
             ],
         ).unwrap();
 
-        let result = ctn_client.log_chunked_message(
-            ChunkedMessage {
+        let result = ctn_client.log_message(
+            Message::Chunk(ChunkedMessage {
                 data: Some(String::from("Test message #1 (part 1)")),
                 is_final: Some(false),
                 continuation_token: None,
-            },
+            }),
             Some(LogMessageOptions {
                 encoding: Some(Encoding::UTF8),
                 encrypt: Some(true),
@@ -2453,7 +2418,7 @@ mod tests {
     }
 
     #[test]
-    fn it_send_message() {
+    fn it_send_message_whole() {
         // Simulate successful 'Send Message' API method response
 
         // Start HTTP server in success simulation node
@@ -2504,7 +2469,7 @@ mod tests {
         ).unwrap();
 
         let result = ctn_client.send_message(
-            "Test message #1",
+            Message::Whole(String::from("Test message #1")),
             DeviceId {
                 id: String::from("d8YpQ7jgPBJEkBrnvp58"),
                 is_prod_unique_id: None,
@@ -2527,7 +2492,7 @@ mod tests {
     }
 
     #[test]
-    fn it_send_message_async() {
+    fn it_send_message_whole_async() {
         // Simulate successful 'Send Message' API method response
 
         // Start HTTP server in success simulation node
@@ -2578,7 +2543,7 @@ mod tests {
         ).unwrap();
 
         let result = ctn_client.send_message(
-            "Test message #1",
+            Message::Whole(String::from("Test message #1")),
             DeviceId {
                 id: String::from("d8YpQ7jgPBJEkBrnvp58"),
                 is_prod_unique_id: None,
@@ -2601,7 +2566,7 @@ mod tests {
     }
 
     #[test]
-    fn it_send_chunked_message() {
+    fn it_send_message_chunk() {
         // Simulate successful 'Send Message' API method response
 
         // Start HTTP server in success simulation node
@@ -2651,12 +2616,12 @@ mod tests {
             ],
         ).unwrap();
 
-        let result = ctn_client.send_chunked_message(
-            ChunkedMessage {
+        let result = ctn_client.send_message(
+            Message::Chunk(ChunkedMessage {
                 data: Some(String::from("Test message #1 (part 1)")),
                 is_final: Some(false),
                 continuation_token: None,
-            },
+            }),
             DeviceId {
                 id: String::from("d8YpQ7jgPBJEkBrnvp58"),
                 is_prod_unique_id: None,

@@ -67,6 +67,16 @@ pub struct ChunkedMessage {
     pub continuation_token: Option<String>,
 }
 
+/// A message to be recorded to the blockchain.
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+#[serde(untagged)]
+pub enum Message {
+    /// A complete message.
+    Whole(String),
+    /// A message chunk.
+    Chunk(ChunkedMessage),
+}
+
 /// Text encoding.
 #[derive(Debug, Serialize, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -1193,15 +1203,7 @@ pub struct RetrieveDeviceIdentificationInfoResult {
 #[derive(Debug, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LogMessageRequest {
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub options: Option<LogMessageOptions>,
-}
-
-#[derive(Debug, Serialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct LogChunkedMessageRequest {
-    pub message: ChunkedMessage,
+    pub message: Message,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<LogMessageOptions>,
 }
@@ -1209,16 +1211,7 @@ pub(crate) struct LogChunkedMessageRequest {
 #[derive(Debug, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SendMessageRequest {
-    pub message: String,
-    pub target_device: DeviceId,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub options: Option<SendMessageOptions>,
-}
-
-#[derive(Debug, Serialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SendChunkedMessageRequest {
-    pub message: ChunkedMessage,
+    pub message: Message,
     pub target_device: DeviceId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<SendMessageOptions>,
@@ -1482,6 +1475,28 @@ mod tests {
         let json = serde_json::to_string(&chunked_message).unwrap();
 
         assert_eq!(json, r#"{"data":"Test message","isFinal":false,"continuationToken":"kjXP2CZaSdkTKCi2jDi2"}"#);
+    }
+
+    #[test]
+    fn it_serialize_message_whole() {
+        let message = Message::Whole(String::from("Test message"));
+
+        let json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(json, r#""Test message""#);
+    }
+
+    #[test]
+    fn it_serialize_message_chunk() {
+        let message = Message::Chunk(ChunkedMessage {
+            data: Some(String::from("Test message chunk #1")),
+            is_final: Some(false),
+            continuation_token: Some(String::from("kYkeYcQN2YJdcJLNSEWq")),
+        });
+
+        let json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(json, r#"{"data":"Test message chunk #1","isFinal":false,"continuationToken":"kYkeYcQN2YJdcJLNSEWq"}"#);
     }
 
     #[test]
@@ -3032,7 +3047,7 @@ mod tests {
     #[test]
     fn it_serialize_log_message_request_no_opts() {
         let log_message_request = LogMessageRequest {
-            message: String::from("Test message"),
+            message: Message::Whole(String::from("Test message")),
             options: None,
         };
 
@@ -3044,7 +3059,11 @@ mod tests {
     #[test]
     fn it_serialize_log_message_request_all_opts() {
         let log_message_request = LogMessageRequest {
-            message: String::from("Test message"),
+            message: Message::Chunk(ChunkedMessage {
+                data: Some(String::from("Test message chunk #1")),
+                is_final: Some(false),
+                continuation_token: Some(String::from("kYkeYcQN2YJdcJLNSEWq")),
+            }),
             options: Some(LogMessageOptions {
                 encoding: Some(Encoding::UTF8),
                 encrypt: None,
@@ -3056,51 +3075,13 @@ mod tests {
 
         let json = serde_json::to_string(&log_message_request).unwrap();
 
-        assert_eq!(json, r#"{"message":"Test message","options":{"encoding":"utf8"}}"#);
-    }
-
-    #[test]
-    fn it_serialize_log_chunked_message_request_no_opts() {
-        let log_chunked_message_request = LogChunkedMessageRequest {
-            message: ChunkedMessage {
-                data: Some(String::from("Test message")),
-                is_final: Some(false),
-                continuation_token: None,
-            },
-            options: None,
-        };
-
-        let json = serde_json::to_string(&log_chunked_message_request).unwrap();
-
-        assert_eq!(json, r#"{"message":{"data":"Test message","isFinal":false}}"#);
-    }
-
-    #[test]
-    fn it_serialize_log_chunked_message_request_all_opts() {
-        let log_chunked_message_request = LogChunkedMessageRequest {
-            message: ChunkedMessage {
-                data: Some(String::from("Test message")),
-                is_final: Some(false),
-                continuation_token: None,
-            },
-            options: Some(LogMessageOptions {
-                encoding: Some(Encoding::UTF8),
-                encrypt: None,
-                off_chain: None,
-                storage: None,
-                async_: None,
-            }),
-        };
-
-        let json = serde_json::to_string(&log_chunked_message_request).unwrap();
-
-        assert_eq!(json, r#"{"message":{"data":"Test message","isFinal":false},"options":{"encoding":"utf8"}}"#);
+        assert_eq!(json, r#"{"message":{"data":"Test message chunk #1","isFinal":false,"continuationToken":"kYkeYcQN2YJdcJLNSEWq"},"options":{"encoding":"utf8"}}"#);
     }
 
     #[test]
     fn it_serialize_send_message_request_no_opts() {
         let send_message_request = SendMessageRequest {
-            message: String::from("Test message"),
+            message: Message::Whole(String::from("Test message")),
             target_device: DeviceId {
                 id: String::from("drc3XdxNtzoucpw9xiRp"),
                 is_prod_unique_id: None
@@ -3116,7 +3097,11 @@ mod tests {
     #[test]
     fn it_serialize_send_message_request_all_opts() {
         let send_message_request = SendMessageRequest {
-            message: String::from("Test message"),
+            message: Message::Chunk(ChunkedMessage {
+                data: Some(String::from("Test message chunk #1")),
+                is_final: Some(false),
+                continuation_token: Some(String::from("kYkeYcQN2YJdcJLNSEWq")),
+            }),
             target_device: DeviceId {
                 id: String::from("drc3XdxNtzoucpw9xiRp"),
                 is_prod_unique_id: None
@@ -3133,54 +3118,7 @@ mod tests {
 
         let json = serde_json::to_string(&send_message_request).unwrap();
 
-        assert_eq!(json, r#"{"message":"Test message","targetDevice":{"id":"drc3XdxNtzoucpw9xiRp"},"options":{"encoding":"utf8"}}"#);
-    }
-
-    #[test]
-    fn it_serialize_send_chunked_message_request_no_opts() {
-        let send_chunked_message_request = SendChunkedMessageRequest {
-            message: ChunkedMessage {
-                data: Some(String::from("Test message")),
-                is_final: Some(false),
-                continuation_token: None,
-            },
-            target_device: DeviceId {
-                id: String::from("drc3XdxNtzoucpw9xiRp"),
-                is_prod_unique_id: None
-            },
-            options: None,
-        };
-
-        let json = serde_json::to_string(&send_chunked_message_request).unwrap();
-
-        assert_eq!(json, r#"{"message":{"data":"Test message","isFinal":false},"targetDevice":{"id":"drc3XdxNtzoucpw9xiRp"}}"#);
-    }
-
-    #[test]
-    fn it_serialize_send_chunked_message_request_all_opts() {
-        let send_chunked_message_request = SendChunkedMessageRequest {
-            message: ChunkedMessage {
-                data: Some(String::from("Test message")),
-                is_final: Some(false),
-                continuation_token: None,
-            },
-            target_device: DeviceId {
-                id: String::from("drc3XdxNtzoucpw9xiRp"),
-                is_prod_unique_id: None
-            },
-            options: Some(SendMessageOptions {
-                encoding: Some(Encoding::UTF8),
-                encrypt: None,
-                off_chain: None,
-                storage: None,
-                read_confirmation: None,
-                async_: None,
-            }),
-        };
-
-        let json = serde_json::to_string(&send_chunked_message_request).unwrap();
-
-        assert_eq!(json, r#"{"message":{"data":"Test message","isFinal":false},"targetDevice":{"id":"drc3XdxNtzoucpw9xiRp"},"options":{"encoding":"utf8"}}"#);
+        assert_eq!(json, r#"{"message":{"data":"Test message chunk #1","isFinal":false,"continuationToken":"kYkeYcQN2YJdcJLNSEWq"},"targetDevice":{"id":"drc3XdxNtzoucpw9xiRp"},"options":{"encoding":"utf8"}}"#);
     }
 
     #[test]
