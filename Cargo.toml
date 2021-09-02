@@ -1,7 +1,7 @@
 [package]
 name = "catenis_api_client"
 description = "Catenis API client library for the Rust programming language"
-version = "1.0.1"
+version = "2.0.0"
 authors = ["Cláudio Sá de Castro <claudio@hiades.com.br>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
