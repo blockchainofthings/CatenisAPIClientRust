@@ -7,11 +7,11 @@ written in the Rust programming language.
 
 ## Documentation
 
-The complete library documentation can be found [here](https://docs.rs/catenis_api_client/~1.0).
+The complete library documentation can be found [here](https://docs.rs/catenis_api_client/~2.0).
 
 ## Usage
 
-To start using the library, one needs to instantiate a new [`CatenisClient`](https://docs.rs/catenis_api_client/~1.0/catenis_api_client/struct.CatenisClient.html)
+To start using the library, one needs to instantiate a new [`CatenisClient`](https://docs.rs/catenis_api_client/~2.0/catenis_api_client/struct.CatenisClient.html)
 object. Then, to make a call to an API method, just call the corresponding method on the client object.
 
 ### Example
@@ -44,7 +44,7 @@ println!("Read message result: {:?}", result);
 ## Notification
 
 The library also makes it easy for receiving notifications from the Catenis system through its
-[`WsNotifyChannel`](https://docs.rs/catenis_api_client/~1.0/catenis_api_client/notification/struct.WsNotifyChannel.html)
+[`WsNotifyChannel`](https://docs.rs/catenis_api_client/~2.0/catenis_api_client/notification/struct.WsNotifyChannel.html)
 data structure, which embeds a WebSocket client.
 
 ## Asynchronous processing
@@ -57,10 +57,10 @@ runtime.
 To activate asynchronous processing, the **`async`** feature must be enabled.
 
 ```toml
-catenis_api_client = { version = "1.0", features = ["async"] }
+catenis_api_client = { version = "2.0", features = ["async"] }
 ```
 
-The asynchronous version of the client can then be accessed from the [`async_impl`](https://docs.rs/catenis_api_client/~1.0/catenis_api_client/async_impl/index.html)
+The asynchronous version of the client can then be accessed from the [`async_impl`](https://docs.rs/catenis_api_client/~2.0/catenis_api_client/async_impl/index.html)
 module.
 
 ### Example
