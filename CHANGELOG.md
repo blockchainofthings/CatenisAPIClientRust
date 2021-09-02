@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.1] - 2021-09-02
+
+### Fixes
+- Fix documentation to reference the latest version of the Catenis API client library.
+
 ## [2.0.0] - 2021-09-02
 
 ### Breaking changes
