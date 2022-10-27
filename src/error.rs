@@ -10,7 +10,7 @@ use std::{
     error, fmt, result,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub(crate) struct CatenisErrorResponse {
     pub status: String,
     pub message: String,
@@ -283,6 +283,18 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn it_deserialize_catenis_error_response() {
+        let json = r#"{"status":"error","message":"Internal server error"}"#;
+
+        let catenis_error_response: CatenisErrorResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(catenis_error_response, CatenisErrorResponse {
+            status: String::from("error"),
+            message: String::from("Internal server error"),
+        });
+    }
 
     fn gen_result_io_error() -> std::result::Result<i32, io::Error> {
         Err(io::Error::new(io::ErrorKind::Other, "Custom I/O error"))
