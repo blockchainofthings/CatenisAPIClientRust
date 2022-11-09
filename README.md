@@ -94,4 +94,4 @@ For further information on the Catenis API, please reference the [Catenis API Do
 
 This library is distributed under the terms of both the [MIT License](LICENSE-MIT) and the [Apache License (Version 2.0)](LICENSE-APACHE).
 
-Copyright © 2021, Blockchain of Things Inc.
+Copyright © 2021-2022, Blockchain of Things Inc.
