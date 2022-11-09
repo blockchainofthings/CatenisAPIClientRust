@@ -10,6 +10,10 @@ use std::{
 use serde::{
     Deserialize, Serialize, Deserializer, de::{self, Visitor},
 };
+use crate::{
+    JsonValue,
+    JsonMap,
+};
 
 use crate::date_time::UtcDateTime;
 
@@ -19,9 +23,25 @@ pub type ListPermissionEventsResult = HashMap<PermissionEvent, String>;
 pub type CheckEffectivePermissionRightResult = HashMap<String, PermissionRight>;
 /// Data returned from a successful call to *List Notification Events* API method.
 pub type ListNotificationEventsResult = HashMap<NotificationEvent, String>;
+/// Representation of a JSON object
+pub type JsonObject = JsonMap<String, JsonValue>;
+
+pub trait IntoJsonObj {
+    fn json_obj(self) -> Option<JsonObject>;
+}
+
+impl IntoJsonObj for JsonValue {
+    fn json_obj(self) -> Option<JsonObject> {
+        if let JsonValue::Object(obj) = self {
+            Some(obj)
+        } else {
+            None
+        }
+    }
+}
 
 /// Identifies a given virtual device.
-#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Clone, Eq, PartialEq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceId {
     /// The ID of the device.
@@ -645,16 +665,38 @@ pub struct IssuedAssetEntry {
     pub total_existent_balance: f64,
 }
 
-/// Information about an asset issuance event.
+/// Information about a regular (fungible) asset issuance event.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AssetIssuanceEventEntry {
+pub struct RegularAssetIssuanceEventEntry {
     /// The issued amount of the asset.
     pub amount: f64,
     /// The virtual device to which the issued amount was assigned.
     pub holding_device: DeviceInfo,
     /// Date and time when the asset was issued.
     pub date: UtcDateTime,
+}
+
+/// Information about a non-fungible asset issuance event.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NonFungibleAssetIssuanceEventEntry {
+    /// List of the IDs of the non-fungible tokens of the asset that have been issued.
+    pub nf_token_ids: Vec<String>,
+    /// List of the virtual devices to which the issued non-fungible tokens were assigned.
+    pub holding_devices: Vec<DeviceInfo>,
+    /// Date and time when the asset was issued.
+    pub date: UtcDateTime,
+}
+
+/// Asset issuance event entry
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum AssetIssuanceEventEntry {
+    /// Entry for regular (fungible) assets.
+    Regular(RegularAssetIssuanceEventEntry),
+    /// Entry for non-fungible assets.
+    NonFungible(NonFungibleAssetIssuanceEventEntry),
 }
 
 /// Information about an asset holder.
@@ -701,6 +743,10 @@ pub enum PermissionEvent {
     ReceiveAssetOf,
     /// The *receive-asset-from* permission event.
     ReceiveAssetFrom,
+    /// The *receive-nf-token-of* permission event.
+    ReceiveNFTokenOf,
+    /// The *receive-nf-token-from* permission event.
+    ReceiveNFTokenFrom,
     /// Any unknown permission event.
     UnknownEvent(String),
 }
@@ -747,6 +793,8 @@ impl ToString for PermissionEvent {
             PermissionEvent::DiscloseIdentityInfo => "disclose-identity-info",
             PermissionEvent::ReceiveAssetOf => "receive-asset-of",
             PermissionEvent::ReceiveAssetFrom => "receive-asset-from",
+            PermissionEvent::ReceiveNFTokenOf => "receive-nf-token-of",
+            PermissionEvent::ReceiveNFTokenFrom => "receive-nf-token-from",
             PermissionEvent::UnknownEvent(s) => s.as_str(),
         })
     }
@@ -767,6 +815,8 @@ impl Into<PermissionEvent> for &str {
             "disclose-identity-info" => PermissionEvent::DiscloseIdentityInfo,
             "receive-asset-of" => PermissionEvent::ReceiveAssetOf,
             "receive-asset-from" => PermissionEvent::ReceiveAssetFrom,
+            "receive-nf-token-of" => PermissionEvent::ReceiveNFTokenOf,
+            "receive-nf-token-from" => PermissionEvent::ReceiveNFTokenFrom,
             s @ _ => PermissionEvent::UnknownEvent(String::from(s)),
         }
     }
@@ -905,6 +955,16 @@ pub enum NotificationEvent {
     AssetExportOutcome,
     /// The *asset-migration-outcome* notification event.
     AssetMigrationOutcome,
+    /// The *nf-asset-issuance-outcome* notification event.
+    NFAssetIssuanceOutcome,
+    /// The *nf-token-received* notification event.
+    NFTokenReceived,
+    /// The *nf-token-confirmed* notification event.
+    NFTokenConfirmed,
+    /// The *nf-token-retrieval-outcome* notification event.
+    NFTokenRetrievalOutcome,
+    /// The *nf-token-transfer-outcome* notification event.
+    NFTokenTransferOutcome,
     /// Any unknown notification event.
     UnknownEvent(String),
 }
@@ -946,6 +1006,11 @@ impl ToString for NotificationEvent {
             NotificationEvent::FinalMsgProgress => "final-msg-progress",
             NotificationEvent::AssetExportOutcome => "asset-export-outcome",
             NotificationEvent::AssetMigrationOutcome => "asset-migration-outcome",
+            NotificationEvent::NFAssetIssuanceOutcome => "nf-asset-issuance-outcome",
+            NotificationEvent::NFTokenReceived => "nf-token-received",
+            NotificationEvent::NFTokenConfirmed => "nf-token-confirmed",
+            NotificationEvent::NFTokenRetrievalOutcome => "nf-token-retrieval-outcome",
+            NotificationEvent::NFTokenTransferOutcome => "nf-token-transfer-outcome",
             NotificationEvent::UnknownEvent(s) => s.as_str(),
         })
     }
@@ -961,6 +1026,11 @@ impl Into<NotificationEvent> for &str {
             "final-msg-progress" => NotificationEvent::FinalMsgProgress,
             "asset-export-outcome" => NotificationEvent::AssetExportOutcome,
             "asset-migration-outcome" => NotificationEvent::AssetMigrationOutcome,
+            "nf-asset-issuance-outcome" => NotificationEvent::NFAssetIssuanceOutcome,
+            "nf-token-received" => NotificationEvent::NFTokenReceived,
+            "nf-token-confirmed" => NotificationEvent::NFTokenConfirmed,
+            "nf-token-retrieval-outcome" => NotificationEvent::NFTokenRetrievalOutcome,
+            "nf-token-transfer-outcome" => NotificationEvent::NFTokenTransferOutcome,
             s @ _ => NotificationEvent::UnknownEvent(String::from(s)),
         }
     }
@@ -1307,6 +1377,336 @@ pub struct ListAssetMigrationsOptions {
     pub skip: Option<usize>,
 }
 
+/// Properties for a new non-fungible asset.
+#[derive(Debug, Serialize, Clone, Eq, PartialEq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct NewNonFungibleAssetInfo {
+    /// The non-fungible asset name.
+    pub name: String,
+    /// A description about the non-fungible asset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Indicates whether more non-fungible tokens of that non-fungible asset can be issued at
+    /// another time.
+    pub can_reissue: bool,
+}
+
+/// Properties for issuing a new non-fungible asset.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct NonFungibleAssetIssuanceInfo {
+    /// Properties of the new non-fungible asset to create.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    pub asset_info: Option<NewNonFungibleAssetInfo>,
+    /// Indicates whether the contents of the non-fungible tokens being issued should be encrypted
+    /// before being stored.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`true`**.
+    pub encrypt_nft_contents: Option<bool>,
+    /// List of virtual devices that will hold the issued non-fungible tokens.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    pub holding_devices: Option<Vec<DeviceId>>,
+    /// Indicates whether processing should be done asynchronously.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`false`**.
+    pub async_: Option<bool>,
+}
+
+/// Non-fungible asset issuance or continuation token.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum NFAssetIssuanceInfoOrContToken {
+    /// Non-fungible asset issuance info.
+    IssuanceInfo(NonFungibleAssetIssuanceInfo),
+    /// Non-fungible asset issuance continuation token.
+    ContinuationToken(String),
+}
+
+/// Metadata for a new non-fungible token.
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NewNonFungibleTokenMetadata {
+    /// The name of the non-fungible token.
+    pub name: String,
+    /// A description of the non-fungible token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// User defined, custom properties of the non-fungible token.
+    ///
+    /// > **Note**: sensitive properties, which are saved in an encrypted form, should be nested
+    /// within a special property named `sensitiveProps`.
+    ///
+    /// > **Tip**: use the [`json_obj`] helper macro to define custom properties.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom: Option<JsonObject>,
+}
+
+/// Data type used for defining the contents for a new non-fungible token.
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NewNonFungibleTokenContents {
+    /// An additional chunk of data of the non-fungible token's contents.
+    pub data: String,
+    /// The encoding of the contents data chunk.
+    pub encoding: Encoding,
+}
+
+/// Properties for a new non-fungible token.
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NewNonFungibleTokenInfo {
+    /// The properties of the non-fungible token to issue.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<NewNonFungibleTokenMetadata>,
+    /// The contents of the non-fungible token to issue.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contents: Option<NewNonFungibleTokenContents>,
+}
+
+/// Properties for reissuing more non-fungible tokens of an existing non-fungible asset.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct NonFungibleAssetReissuanceInfo {
+    /// Indicates whether the contents of the non-fungible tokens being issued should be encrypted
+    /// before being stored.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`true`**.
+    pub encrypt_nft_contents: Option<bool>,
+    /// List of virtual devices that will hold the issued non-fungible tokens.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    pub holding_devices: Option<Vec<DeviceId>>,
+    /// Indicates whether processing should be done asynchronously.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`false`**.
+    pub async_: Option<bool>,
+}
+
+/// Non-fungible asset reissuance or continuation token.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum NFAssetReissuanceInfoOrContToken {
+    /// Non-fungible asset reissuance info.
+    ReissuanceInfo(NonFungibleAssetReissuanceInfo),
+    /// Non-fungible asset issuance continuation token.
+    ContinuationToken(String),
+}
+
+/// Information about the error processing a non-fungible asset issuance asynchronously.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFAssetIssuanceProcessError {
+    /// Numeric code — equivalent to an HTML status code — of the error that took place while
+    /// processing the asset issuance.
+    pub code: u16,
+    /// Text describing the error that took place while processing the asset issuance.
+    pub message: String
+}
+
+/// Report on the asynchronous processing status of a non-fungible asset issuance.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFAssetIssuanceProcessProgress {
+    /// The percentage of the total processing that has been already completed.
+    pub percent_processed: u8,
+    /// Indicates whether the processing has been finished.
+    pub done: bool,
+    /// Indicates whether the asset issuance has been successfully completed.
+    ///
+    /// > **Note**: only returned if the processing has already been finished.
+    pub success: Option<bool>,
+    /// Processing error.
+    ///
+    /// > **Note**: only returned if the processing finished with error.
+    pub error: Option<NFAssetIssuanceProcessError>,
+    /// Date and time when processing was finalized.
+    ///
+    /// > **Note**: only returned if the processing has already been finished.
+    pub finish_date: Option<UtcDateTime>,
+}
+
+/// Result of a non-fungible asset issuance.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFAssetIssuanceResult {
+    /// The ID of the newly created non-fungible asset.
+    ///
+    /// > **Note**: not returned in case of re-issuance.
+    pub asset_id: Option<String>,
+    /// List of the IDs of the newly issued non-fungible tokens.
+    pub nf_token_ids: Vec<String>,
+}
+
+/// Option settings for retrieving a non-fungible token.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct RetrieveNonFungibleTokenOptions {
+    /// Indicates whether the contents of the non-fungible token should be retrieved or not.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`true`**.
+    pub retrieve_contents: Option<bool>,
+    /// Indicates whether only the contents of the non-fungible token should be retrieved.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`false`**.
+    pub contents_only: Option<bool>,
+    /// The encoding with which the retrieved chunk of non-fungible token contents data will be
+    /// encoded.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`Encoding::Base64`**.
+    pub contents_encoding: Option<Encoding>,
+    /// Size, in bytes, of the largest chunk of non-fungible token contents data that should be
+    /// returned.
+    ///
+    /// It must be an integer value between 1,024 (1 KB) and 15,728,640 (15 MB).
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    pub data_chunk_size: Option<usize>,
+    /// Indicates whether the processing should be done asynchronously.
+    ///
+    /// > **Note**: should be omitted in a continuation call.
+    ///
+    /// Default value: **`false`**.
+    pub async_: Option<bool>,
+    /// This signals a continuation call of the non-fungible token retrieval.
+    ///
+    /// It should be filled with the continuation token returned by the previous call.
+    pub continuation_token: Option<String>,
+}
+
+/// Metadata of a non-fungible token.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NonFungibleTokenMetadata {
+    /// The name of the non-fungible token.
+    pub name: String,
+    /// A description of the non-fungible token.
+    pub description: Option<String>,
+    /// Indicates whether the stored contents is encrypted.
+    pub contents_encrypted: bool,
+    /// URL pointing to the non-fungible token's contents stored on IPFS.
+    #[serde(rename = "contentsURL")]
+    pub contents_url: String,
+    /// User defined, custom properties of the non-fungible token.
+    ///
+    /// > **Note**: sensitive properties, which are saved in an encrypted form, are nested within
+    /// a special property named `sensitiveProps`.
+    pub custom: Option<JsonObject>,
+}
+
+/// Represents a chunk of the contents data of a non-fungible token.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NonFungibleTokenContents {
+    /// The text encoded non-fungible token contents data.
+    pub data: String,
+}
+
+/// Retrieved information about a non-fungible token.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NonFungibleTokenInfo {
+    /// The ID of the non-fungible asset to which the non-fungible token belongs.
+    ///
+    /// > **Note**: not returned for a continuation call or when retrieving only the contents.
+    pub asset_id: Option<String>,
+    /// The non-fungible token metadata.
+    ///
+    /// > **Note**: not returned for a continuation call or when retrieving only the contents.
+    pub metadata: Option<NonFungibleTokenMetadata>,
+    /// The retrieved non-fungible token contents data.
+    pub contents: Option<NonFungibleTokenContents>,
+}
+
+/// Information about the error processing a non-fungible token retrieval asynchronously.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFTokenRetrievalProcessError {
+    /// Numeric code — equivalent to an HTML status code — of the error that took place while
+    /// processing the token retrieval.
+    pub code: u16,
+    /// Text describing the error that took place while processing the token retrieval.
+    pub message: String
+}
+
+/// Report on the asynchronous processing status of a non-fungible token retrieval.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFTokenRetrievalProcessProgress {
+    /// Number of bytes of non-fungible token data that have been retrieved.
+    pub bytes_retrieved: usize,
+    /// Indicates whether the processing has been finished.
+    pub done: bool,
+    /// Indicates whether all the non-fungible token data has been successfully retrieved.
+    ///
+    /// > **Note**: only returned if the processing has already been finished.
+    pub success: Option<bool>,
+    /// Processing error.
+    ///
+    /// > **Note**: only returned if the processing finished with error.
+    pub error: Option<NFTokenRetrievalProcessError>,
+    /// Date and time when data retrieval has been finalized.
+    ///
+    /// > **Note**: only returned if the processing has already been finished.
+    pub finish_date: Option<UtcDateTime>,
+}
+
+/// Information about manipulation of non-fungible token data for transfer.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFTokenDataManipulationProgress {
+    /// Number of bytes of non-fungible token data that have been read.
+    pub bytes_read: usize,
+    /// Number of bytes of non-fungible token data that have been written.
+    ///
+    /// > **Note**: only returned if data needed to be re-encrypted.
+    pub bytes_written: Option<usize>,
+}
+
+/// Information about the error processing a non-fungible token transfer asynchronously.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFTokenTransferProcessError {
+    /// Numeric code — equivalent to an HTML status code — of the error that took place while
+    /// processing the token transfer.
+    pub code: u16,
+    /// Text describing the error that took place while processing the token transfer.
+    pub message: String
+}
+
+/// Report on the asynchronous processing status of a non-fungible token transfer.
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NFTokenTransferProcessProgress {
+    /// Progress of the non-fungible token data manipulation: reading and rewriting it after
+    /// re-encryption (if required).
+    pub data_manipulation: NFTokenDataManipulationProgress,
+    /// Indicates whether the processing has been finished.
+    pub done: bool,
+    ///  Indicates whether the non-fungible token has been successfully transferred.
+    ///
+    /// > **Note**: only returned if the processing has already been finished.
+    pub success: Option<bool>,
+    /// Processing error.
+    ///
+    /// > **Note**: only returned if the processing finished with error.
+    pub error: Option<NFTokenRetrievalProcessError>,
+    /// Date and time when the non-fungible token transfer has been finalized.
+    ///
+    /// > **Note**: only returned if the processing has already been finished.
+    pub finish_date: Option<UtcDateTime>,
+}
+
 // Result (used in response) data structures
 
 /// Data returned from a successful call to *Log Message* API method.
@@ -1458,6 +1858,8 @@ pub struct RetrieveAssetInfoResult {
     pub name: String,
     /// Description about the asset.
     pub description: String,
+    /// Indicates whether this is a non-fungible asset.
+    pub is_non_fungible: bool,
     /// Indicates whether more units of this asset can be issued.
     pub can_reissue: bool,
     /// The maximum number of decimal places that can be used to specify a fractional amount of
@@ -1656,6 +2058,121 @@ pub struct ListAssetMigrationsResult {
     pub has_more: bool,
 }
 
+/// Data returned from a successful call to *Issue Non-Fungible Asset* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueNonFungibleAssetResult {
+    /// The continuation token to be used in the next continuation call.
+    ///
+    /// > **Note**: only returned for a non-final call.
+    pub continuation_token: Option<String>,
+    /// The asset issuance ID. Used for retrieving the progress of an asynchronous non-fungible
+    /// asset issuance.
+    ///
+    /// > **Note**: only returned for a final call when doing processing asynchronously.
+    pub asset_issuance_id: Option<String>,
+    /// The ID of the newly created non-fungible asset.
+    ///
+    /// > **Note**: only returned for a final call when not doing processing asynchronously.
+    pub asset_id: Option<String>,
+    /// A list of the IDs of the issued non-fungible tokens.
+    ///
+    /// > **Note**: only returned for a final call when not doing processing asynchronously.
+    pub nf_token_ids: Option<Vec<String>>,
+}
+
+/// Data returned from a successful call to *Reissue Non-Fungible Asset* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReissueNonFungibleAssetResult {
+    /// The continuation token to be used in the next continuation call.
+    ///
+    /// > **Note**: only returned for a non-final call.
+    pub continuation_token: Option<String>,
+    /// The asset issuance ID. Used for retrieving the progress of an asynchronous non-fungible
+    /// asset issuance.
+    ///
+    /// > **Note**: only returned for a final call when doing processing asynchronously.
+    pub asset_issuance_id: Option<String>,
+    /// A list of the IDs of the issued non-fungible tokens.
+    ///
+    /// > **Note**: only returned for a final call when not doing processing asynchronously.
+    pub nf_token_ids: Option<Vec<String>>,
+}
+
+/// Data returned from a successful call to *Retrieve Non-Fungible Asset Issuance Progress* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RetrieveNFAssetIssuanceProgressResult {
+    /// The ID of the non-fungible asset for which more non-fungible tokens are being issued.
+    ///
+    /// > **Note**: only returned in case of re-issuance.
+    pub asset_id: Option<String>,
+    /// Current processing status.
+    pub progress: NFAssetIssuanceProcessProgress,
+    /// The result of the asset issuance.
+    ///
+    /// > **Note**: only returned if the processing finished successfully.
+    pub result: Option<NFAssetIssuanceResult>,
+}
+
+/// Data returned from a successful call to *Retrieve Non-Fungible Token* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RetrieveNonFungibleTokenResult {
+    /// The continuation token to be used in the next continuation call.
+    ///
+    /// > **Note**: only returned if there is more data to be retrieved.
+    pub continuation_token: Option<String>,
+    /// The non-fungible token retrieval ID.
+    ///
+    /// Used for retrieving the progress of an asynchronous non-fungible token retrieval.
+    ///
+    /// > **Note**: only returned for the initial call when doing processing asynchronously.
+    pub token_retrieval_id: Option<String>,
+    /// The retrieved non-fungible token data.
+    ///
+    /// > **Note**: not returned for the initial call when doing processing asynchronously.
+    pub non_fungible_token: Option<NonFungibleTokenInfo>,
+}
+
+/// Data returned from a successful call to *Retrieve Non-Fungible Token Retrieval Progress* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RetrieveNFTokenRetrievalProgressResult {
+    /// Current processing status.
+    pub progress: NFTokenRetrievalProcessProgress,
+    /// The token that should be used to complete the retrieval of the non-fungible token.
+    ///
+    /// > **Note**: only returned if the processing finished successfully.
+    pub continuation_token: Option<String>,
+}
+
+/// Data returned from a successful call to *Transfer Non-Fungible Token* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferNonFungibleTokenResult {
+    /// The non-fungible token transfer ID.
+    ///
+    /// Used for retrieving the progress of an asynchronous non-fungible token transfer.
+    ///
+    /// > **Note**: only returned when doing processing asynchronously.
+    pub token_transfer_id: Option<String>,
+    /// The value **`true`** indicating that the non-fungible token has been successfully
+    /// transferred.
+    ///
+    /// > **Note**: not returned when doing processing asynchronously.
+    pub success: Option<bool>,
+}
+
+/// Data returned from a successful call to *Retrieve Non-Fungible Token Transfer Progress* API method.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RetrieveNFTokenTransferProgressResult {
+    /// Current processing status.
+    pub progress: NFTokenTransferProcessProgress,
+}
+
 // Request data structures
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
@@ -1713,6 +2230,62 @@ pub(crate) struct MigrateAssetRequest {
     pub migration: AssetMigration,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<MigrateAssetOptions>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IssueNonFungibleAssetRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_info: Option<NewNonFungibleAssetInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "encryptNFTContents")]
+    /// Default value: **`true`**.
+    pub encrypt_nft_contents: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holding_devices: Option<Vec<DeviceId>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "async")]
+    /// Default value: **`false`**.
+    pub async_: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuation_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Default value: **`true`**.
+    pub is_final: Option<bool>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReissueNonFungibleAssetRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "encryptNFTContents")]
+    /// Default value: **`true`**.
+    pub encrypt_nft_contents: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holding_devices: Option<Vec<DeviceId>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "async")]
+    /// Default value: **`false`**.
+    pub async_: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuation_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Default value: **`true`**.
+    pub is_final: Option<bool>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TransferNonFungibleTokenRequest {
+    pub receiving_device: DeviceId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "async")]
+    /// Default value: **`false`**.
+    pub async_: Option<bool>,
 }
 
 // Response data structures
@@ -1911,6 +2484,55 @@ pub(crate) struct ListExportedAssetsResponse {
 pub(crate) struct ListAssetMigrationsResponse {
     pub status: String,
     pub data: ListAssetMigrationsResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IssueNonFungibleAssetResponse {
+    pub status: String,
+    pub data: IssueNonFungibleAssetResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReissueNonFungibleAssetResponse {
+    pub status: String,
+    pub data: ReissueNonFungibleAssetResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RetrieveNFAssetIssuanceProgressResponse {
+    pub status: String,
+    pub data: RetrieveNFAssetIssuanceProgressResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RetrieveNonFungibleTokenResponse {
+    pub status: String,
+    pub data: RetrieveNonFungibleTokenResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RetrieveNFTokenRetrievalProgressResponse {
+    pub status: String,
+    pub data: RetrieveNFTokenRetrievalProgressResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TransferNonFungibleTokenResponse {
+    pub status: String,
+    pub data: TransferNonFungibleTokenResult,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RetrieveNFTokenTransferProgressResponse {
+    pub status: String,
+    pub data: RetrieveNFTokenTransferProgressResult,
 }
 
 #[cfg(test)]
@@ -2624,12 +3246,12 @@ mod tests {
     }
 
     #[test]
-    fn it_deserialize_asset_issuance_event_entry() {
+    fn it_deserialize_regular_asset_issuance_event_entry() {
         let json = r#"{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"}"#;
 
-        let asset_issuance_event_entry: AssetIssuanceEventEntry = serde_json::from_str(json).unwrap();
+        let regular_asset_issuance_event_entry: RegularAssetIssuanceEventEntry = serde_json::from_str(json).unwrap();
 
-        assert_eq!(asset_issuance_event_entry, AssetIssuanceEventEntry {
+        assert_eq!(regular_asset_issuance_event_entry, RegularAssetIssuanceEventEntry {
             amount: 123.0,
             holding_device: DeviceInfo {
                 device_id: String::from("drc3XdxNtzoucpw9xiRp"),
@@ -2638,6 +3260,67 @@ mod tests {
             },
             date: "2020-12-23T10:51:45.935Z".into(),
         });
+    }
+
+    #[test]
+    fn it_deserialize_non_fungible_asset_issuance_event_entry() {
+        let json = r#"{"nfTokenIds":["tQyJrga3ke65RR23iyr2","tf2rbknDoo9wPsKBkskj"],"holdingDevices":[{"deviceId":"d8YpQ7jgPBJEkBrnvp58"}],"date":"2020-12-24T13:27:02.010Z"}"#;
+
+        let non_fungible_asset_issuance_event_entry: NonFungibleAssetIssuanceEventEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(non_fungible_asset_issuance_event_entry, NonFungibleAssetIssuanceEventEntry {
+            nf_token_ids: vec![
+                String::from("tQyJrga3ke65RR23iyr2"),
+                String::from("tf2rbknDoo9wPsKBkskj"),
+            ],
+            holding_devices: vec![
+                DeviceInfo {
+                    device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                    name: None,
+                    prod_unique_id: None,
+                },
+            ],
+            date: "2020-12-24T13:27:02.010Z".into(),
+        });
+    }
+
+    #[test]
+    fn it_deserialize_asset_issuance_event_entry_regular() {
+        let json = r#"{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"}"#;
+
+        let asset_issuance_event_entry: AssetIssuanceEventEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_issuance_event_entry, AssetIssuanceEventEntry::Regular(RegularAssetIssuanceEventEntry {
+            amount: 123.0,
+            holding_device: DeviceInfo {
+                device_id: String::from("drc3XdxNtzoucpw9xiRp"),
+                name: None,
+                prod_unique_id: None,
+            },
+            date: "2020-12-23T10:51:45.935Z".into(),
+        }));
+    }
+
+    #[test]
+    fn it_deserialize_asset_issuance_event_entry_non_fungible() {
+        let json = r#"{"nfTokenIds":["tQyJrga3ke65RR23iyr2","tf2rbknDoo9wPsKBkskj"],"holdingDevices":[{"deviceId":"d8YpQ7jgPBJEkBrnvp58"}],"date":"2020-12-24T13:27:02.010Z"}"#;
+
+        let asset_issuance_event_entry: AssetIssuanceEventEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset_issuance_event_entry, AssetIssuanceEventEntry::NonFungible(NonFungibleAssetIssuanceEventEntry {
+            nf_token_ids: vec![
+                String::from("tQyJrga3ke65RR23iyr2"),
+                String::from("tf2rbknDoo9wPsKBkskj"),
+            ],
+            holding_devices: vec![
+                DeviceInfo {
+                    device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                    name: None,
+                    prod_unique_id: None,
+                },
+            ],
+            date: "2020-12-24T13:27:02.010Z".into(),
+        }));
     }
 
     #[test]
@@ -3656,7 +4339,7 @@ mod tests {
     
     #[test]
     fn it_deserialize_retrieve_asset_info_result() {
-        let json = r#"{"assetId":"aQjlzShmrnEZeeYBZihc","name":"TestAsset_1","description":"First asset issued for test","canReissue":false,"decimalPlaces":2,"issuer":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"totalExistentBalance":123.25}"#;
+        let json = r#"{"assetId":"aQjlzShmrnEZeeYBZihc","name":"TestAsset_1","description":"First asset issued for test","isNonFungible":false,"canReissue":false,"decimalPlaces":2,"issuer":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"totalExistentBalance":123.25}"#;
 
         let retrieve_asset_info_result: RetrieveAssetInfoResult = serde_json::from_str(json).unwrap();
 
@@ -3664,6 +4347,7 @@ mod tests {
             asset_id: String::from("aQjlzShmrnEZeeYBZihc"),
             name: String::from("TestAsset_1"),
             description: String::from("First asset issued for test"),
+            is_non_fungible: false,
             can_reissue: false,
             decimal_places: 2,
             issuer: DeviceInfo {
@@ -3737,13 +4421,13 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_asset_issuance_history_result() {
-        let json = r#"{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"},{"amount":150,"holdingDevice":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"date":"2020-12-23T11:17:23.731Z"}],"hasMore":false}"#;
+        let json = r#"{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"},{"nfTokenIds":["tQyJrga3ke65RR23iyr2","tf2rbknDoo9wPsKBkskj"],"holdingDevices":[{"deviceId":"d8YpQ7jgPBJEkBrnvp58"}],"date":"2020-12-24T13:27:02.010Z"}],"hasMore":false}"#;
 
         let retrieve_asset_issuance_history_result: RetrieveAssetIssuanceHistoryResult = serde_json::from_str(json).unwrap();
 
         assert_eq!(retrieve_asset_issuance_history_result, RetrieveAssetIssuanceHistoryResult {
             issuance_events: vec![
-                AssetIssuanceEventEntry {
+                AssetIssuanceEventEntry::Regular(RegularAssetIssuanceEventEntry {
                     amount: 123.0,
                     holding_device: DeviceInfo {
                         device_id: String::from("drc3XdxNtzoucpw9xiRp"),
@@ -3751,16 +4435,21 @@ mod tests {
                         prod_unique_id: None,
                     },
                     date: "2020-12-23T10:51:45.935Z".into(),
-                },
-                AssetIssuanceEventEntry {
-                    amount: 150.0,
-                    holding_device: DeviceInfo {
-                        device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
-                        name: None,
-                        prod_unique_id: None,
-                    },
-                    date: "2020-12-23T11:17:23.731Z".into(),
-                },
+                }),
+                AssetIssuanceEventEntry::NonFungible(NonFungibleAssetIssuanceEventEntry {
+                    nf_token_ids: vec![
+                        String::from("tQyJrga3ke65RR23iyr2"),
+                        String::from("tf2rbknDoo9wPsKBkskj"),
+                    ],
+                    holding_devices: vec![
+                        DeviceInfo {
+                            device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                            name: None,
+                            prod_unique_id: None,
+                        },
+                    ],
+                    date: "2020-12-24T13:27:02.010Z".into(),
+                }),
             ],
             has_more: false,
         });
@@ -4638,7 +5327,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_asset_info_response() {
-        let json = r#"{"status":"success","data":{"assetId":"aQjlzShmrnEZeeYBZihc","name":"TestAsset_1","description":"First asset issued for test","canReissue":false,"decimalPlaces":2,"issuer":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"totalExistentBalance":123.25}}"#;
+        let json = r#"{"status":"success","data":{"assetId":"aQjlzShmrnEZeeYBZihc","name":"TestAsset_1","description":"First asset issued for test","isNonFungible":false,"canReissue":false,"decimalPlaces":2,"issuer":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"totalExistentBalance":123.25}}"#;
 
         let retrieve_asset_info_response: RetrieveAssetInfoResponse = serde_json::from_str(json).unwrap();
 
@@ -4648,6 +5337,7 @@ mod tests {
                 asset_id: String::from("aQjlzShmrnEZeeYBZihc"),
                 name: String::from("TestAsset_1"),
                 description: String::from("First asset issued for test"),
+                is_non_fungible: false,
                 can_reissue: false,
                 decimal_places: 2,
                 issuer: DeviceInfo {
@@ -4731,7 +5421,7 @@ mod tests {
 
     #[test]
     fn it_deserialize_retrieve_asset_issuance_history_response() {
-        let json = r#"{"status":"success","data":{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"},{"amount":150,"holdingDevice":{"deviceId":"d8YpQ7jgPBJEkBrnvp58"},"date":"2020-12-23T11:17:23.731Z"}],"hasMore":false}}"#;
+        let json = r#"{"status":"success","data":{"issuanceEvents":[{"amount":123,"holdingDevice":{"deviceId":"drc3XdxNtzoucpw9xiRp"},"date":"2020-12-23T10:51:45.935Z"},{"nfTokenIds":["tQyJrga3ke65RR23iyr2","tf2rbknDoo9wPsKBkskj"],"holdingDevices":[{"deviceId":"d8YpQ7jgPBJEkBrnvp58"}],"date":"2020-12-24T13:27:02.010Z"}],"hasMore":false}}"#;
 
         let retrieve_asset_issuance_history_response: RetrieveAssetIssuanceHistoryResponse = serde_json::from_str(json).unwrap();
 
@@ -4739,7 +5429,7 @@ mod tests {
             status: String::from("success"),
             data: RetrieveAssetIssuanceHistoryResult {
                 issuance_events: vec![
-                    AssetIssuanceEventEntry {
+                    AssetIssuanceEventEntry::Regular(RegularAssetIssuanceEventEntry {
                         amount: 123.0,
                         holding_device: DeviceInfo {
                             device_id: String::from("drc3XdxNtzoucpw9xiRp"),
@@ -4747,16 +5437,21 @@ mod tests {
                             prod_unique_id: None,
                         },
                         date: "2020-12-23T10:51:45.935Z".into(),
-                    },
-                    AssetIssuanceEventEntry {
-                        amount: 150.0,
-                        holding_device: DeviceInfo {
-                            device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
-                            name: None,
-                            prod_unique_id: None,
-                        },
-                        date: "2020-12-23T11:17:23.731Z".into(),
-                    },
+                    }),
+                    AssetIssuanceEventEntry::NonFungible(NonFungibleAssetIssuanceEventEntry {
+                        nf_token_ids: vec![
+                            String::from("tQyJrga3ke65RR23iyr2"),
+                            String::from("tf2rbknDoo9wPsKBkskj"),
+                        ],
+                        holding_devices: vec![
+                            DeviceInfo {
+                                device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                                name: None,
+                                prod_unique_id: None,
+                            },
+                        ],
+                        date: "2020-12-24T13:27:02.010Z".into(),
+                    }),
                 ],
                 has_more: false,
             },
@@ -5165,5 +5860,1098 @@ mod tests {
                 has_more: false,
             },
         });
+    }
+
+    mod nf_assets_tests {
+        use super::*;
+
+        #[test]
+        fn it_serialize_new_non_fungible_asset_info_no_opts() {
+            let new_nf_asset_info = NewNonFungibleAssetInfo {
+                name: String::from("TestNFAsset_1"),
+                description: None,
+                can_reissue: false,
+            };
+
+            let json = serde_json::to_string(&new_nf_asset_info).unwrap();
+
+            assert_eq!(json, r#"{"name":"TestNFAsset_1","canReissue":false}"#);
+        }
+
+        #[test]
+        fn it_serialize_new_asset_info_all_opts() {
+            let new_nf_asset_info = NewNonFungibleAssetInfo {
+                name: String::from("TestNFAsset_1"),
+                description: Some(String::from("First non-fungible asset issued for test")),
+                can_reissue: true,
+            };
+
+            let json = serde_json::to_string(&new_nf_asset_info).unwrap();
+
+            assert_eq!(json, r#"{"name":"TestNFAsset_1","description":"First non-fungible asset issued for test","canReissue":true}"#);
+        }
+
+        #[test]
+        fn it_serialize_new_non_fungible_token_metadata_no_opts() {
+            let new_nf_token_metadata = NewNonFungibleTokenMetadata {
+                name: String::from("TestNFToken_1"),
+                description: None,
+                custom: None,
+            };
+
+            let json = serde_json::to_string(&new_nf_token_metadata).unwrap();
+
+            assert_eq!(json, r#"{"name":"TestNFToken_1"}"#);
+        }
+
+        #[test]
+        fn it_serialize_new_non_fungible_token_metadata_all_opts() {
+            let new_nf_token_metadata = NewNonFungibleTokenMetadata {
+                name: String::from("TestNFToken_1"),
+                description: Some(String::from("First non-fungible token issued for test")),
+                custom: json_obj!({
+                    "propNum": 5,
+                    "propStr": "ABC",
+                    "propBool": true
+                }),
+            };
+
+            let json = serde_json::to_string(&new_nf_token_metadata).unwrap();
+
+            assert_eq!(json, r#"{"name":"TestNFToken_1","description":"First non-fungible token issued for test","custom":{"propNum":5,"propStr":"ABC","propBool":true}}"#);
+        }
+
+        #[test]
+        fn it_serialize_new_non_fungible_token_metadata_all_opts_sensitive_props() {
+            let new_nf_token_metadata = NewNonFungibleTokenMetadata {
+                name: String::from("TestNFToken_1"),
+                description: Some(String::from("First non-fungible token issued for test")),
+                custom: json_obj!({
+                    "sensitiveProps": {
+                        "senseProp1": "XYZ",
+                        "senseProp2": "456"
+                    },
+                    "propNum": 5,
+                    "propStr": "ABC",
+                    "propBool": true
+                }),
+            };
+
+            let json = serde_json::to_string(&new_nf_token_metadata).unwrap();
+
+            assert_eq!(json, r#"{"name":"TestNFToken_1","description":"First non-fungible token issued for test","custom":{"sensitiveProps":{"senseProp1":"XYZ","senseProp2":"456"},"propNum":5,"propStr":"ABC","propBool":true}}"#);
+        }
+
+        #[test]
+        fn it_serialize_new_non_fungible_token_contents() {
+            let new_nf_token_contents = NewNonFungibleTokenContents {
+                data: String::from("This is the contents of non-fungible token #1"),
+                encoding: Encoding::UTF8,
+            };
+
+            let json = serde_json::to_string(&new_nf_token_contents).unwrap();
+
+            assert_eq!(json, r#"{"data":"This is the contents of non-fungible token #1","encoding":"utf8"}"#);
+        }
+
+        #[test]
+        fn it_serialize_new_non_fungible_token_info_no_opts() {
+            let new_nf_token_info = NewNonFungibleTokenInfo {
+                metadata: None,
+                contents: None,
+            };
+
+            let json = serde_json::to_string(&new_nf_token_info).unwrap();
+
+            assert_eq!(json, r#"{}"#);
+        }
+
+        #[test]
+        fn it_serialize_new_non_fungible_token_info_all_opts() {
+            let new_nf_token_info = NewNonFungibleTokenInfo {
+                metadata: Some(NewNonFungibleTokenMetadata {
+                    name: String::from("TestNFToken_1"),
+                    description: Some(String::from("First non-fungible token issued for test")),
+                    custom: json_obj!({
+                        "sensitiveProps": {
+                            "senseProp1": "XYZ",
+                            "senseProp2": "456"
+                        },
+                        "propNum": 5,
+                        "propStr": "ABC",
+                        "propBool": true
+                    }),
+                }),
+                contents: Some(NewNonFungibleTokenContents {
+                    data: String::from("This is the contents of non-fungible token #1"),
+                    encoding: Encoding::UTF8,
+                }),
+            };
+
+            let json = serde_json::to_string(&new_nf_token_info).unwrap();
+
+            assert_eq!(json, r#"{"metadata":{"name":"TestNFToken_1","description":"First non-fungible token issued for test","custom":{"sensitiveProps":{"senseProp1":"XYZ","senseProp2":"456"},"propNum":5,"propStr":"ABC","propBool":true}},"contents":{"data":"This is the contents of non-fungible token #1","encoding":"utf8"}}"#);
+        }
+
+        #[test]
+        fn it_serialize_issue_non_fungible_asset_request_cont_call() {
+            let issue_non_fungible_asset_request = IssueNonFungibleAssetRequest {
+                asset_info: None,
+                encrypt_nft_contents: None,
+                holding_devices: None,
+                async_: None,
+                continuation_token: Some(String::from("bRQDsLZpksdHyMPxFk3J")),
+                non_fungible_tokens: None,
+                is_final: Some(true),
+            };
+
+            let json = serde_json::to_string(&issue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"continuationToken":"bRQDsLZpksdHyMPxFk3J","isFinal":true}"#);
+        }
+
+        #[test]
+        fn it_serialize_issue_non_fungible_asset_request_non_cont_call_no_opts() {
+            let issue_non_fungible_asset_request = IssueNonFungibleAssetRequest {
+                asset_info: Some(NewNonFungibleAssetInfo {
+                    name: String::from("TestNFAsset_1"),
+                    description: Some(String::from("First non-fungible asset issued for test")),
+                    can_reissue: true,
+                }),
+                encrypt_nft_contents: None,
+                holding_devices: None,
+                async_: None,
+                continuation_token: None,
+                non_fungible_tokens: Some(vec![
+                    NewNonFungibleTokenInfo {
+                        metadata: Some(NewNonFungibleTokenMetadata {
+                            name: String::from("TestNFToken_1"),
+                            description: Some(String::from("First non-fungible token issued for test")),
+                            custom: None,
+                        }),
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("This is the contents of non-fungible token #1"),
+                            encoding: Encoding::UTF8,
+                        }),
+                    },
+                ]),
+                is_final: None,
+            };
+
+            let json = serde_json::to_string(&issue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"assetInfo":{"name":"TestNFAsset_1","description":"First non-fungible asset issued for test","canReissue":true},"nonFungibleTokens":[{"metadata":{"name":"TestNFToken_1","description":"First non-fungible token issued for test"},"contents":{"data":"This is the contents of non-fungible token #1","encoding":"utf8"}}]}"#);
+        }
+
+        #[test]
+        fn it_serialize_issue_non_fungible_asset_request_non_cont_call_all_opts() {
+            let issue_non_fungible_asset_request = IssueNonFungibleAssetRequest {
+                asset_info: Some(NewNonFungibleAssetInfo {
+                    name: String::from("TestNFAsset_1"),
+                    description: Some(String::from("First non-fungible asset issued for test")),
+                    can_reissue: true,
+                }),
+                encrypt_nft_contents: Some(true),
+                holding_devices: Some(vec![
+                    DeviceId {
+                        id: String::from("drc3XdxNtzoucpw9xiRp"),
+                        is_prod_unique_id: Some(false)
+                    },
+                ]),
+                async_: Some(false),
+                continuation_token: None,
+                non_fungible_tokens: Some(vec![
+                    NewNonFungibleTokenInfo {
+                        metadata: Some(NewNonFungibleTokenMetadata {
+                            name: String::from("TestNFToken_1"),
+                            description: Some(String::from("First non-fungible token issued for test")),
+                            custom: None,
+                        }),
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("This is the contents of non-fungible token #1"),
+                            encoding: Encoding::UTF8,
+                        }),
+                    },
+                ]),
+                is_final: Some(true),
+            };
+
+            let json = serde_json::to_string(&issue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"assetInfo":{"name":"TestNFAsset_1","description":"First non-fungible asset issued for test","canReissue":true},"encryptNFTContents":true,"holdingDevices":[{"id":"drc3XdxNtzoucpw9xiRp","isProdUniqueId":false}],"async":false,"nonFungibleTokens":[{"metadata":{"name":"TestNFToken_1","description":"First non-fungible token issued for test"},"contents":{"data":"This is the contents of non-fungible token #1","encoding":"utf8"}}],"isFinal":true}"#);
+        }
+
+        #[test]
+        fn it_deserialize_issue_non_fungible_asset_result_non_final() {
+            let json = r#"{"continuationToken":"bRQDsLZpksdHyMPxFk3J"}"#;
+
+            let issue_nf_asset_result: IssueNonFungibleAssetResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(issue_nf_asset_result, IssueNonFungibleAssetResult {
+                continuation_token: Some(String::from("bRQDsLZpksdHyMPxFk3J")),
+                asset_issuance_id: None,
+                asset_id: None,
+                nf_token_ids: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_issue_non_fungible_asset_result_async() {
+            let json = r#"{"assetIssuanceId":"iNQfcL3jCJm4yYZQN9pk"}"#;
+
+            let issue_nf_asset_result: IssueNonFungibleAssetResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(issue_nf_asset_result, IssueNonFungibleAssetResult {
+                continuation_token: None,
+                asset_issuance_id: Some(String::from("iNQfcL3jCJm4yYZQN9pk")),
+                asset_id: None,
+                nf_token_ids: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_issue_non_fungible_asset_result_final() {
+            let json = r#"{"assetId":"ahfTzqgWAXnMR6Z57mcp","nfTokenIds":["tSWtJurhbkSJLGjjbN4R","t76Yzrbqcjbtehk6Wecf"]}"#;
+
+            let issue_nf_asset_result: IssueNonFungibleAssetResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(issue_nf_asset_result, IssueNonFungibleAssetResult {
+                continuation_token: None,
+                asset_issuance_id: None,
+                asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                nf_token_ids: Some(vec![
+                    String::from("tSWtJurhbkSJLGjjbN4R"),
+                    String::from("t76Yzrbqcjbtehk6Wecf"),
+                ]),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_issue_non_fungible_asset_response() {
+            let json = r#"{"status":"success","data":{"assetId":"ahfTzqgWAXnMR6Z57mcp","nfTokenIds":["tSWtJurhbkSJLGjjbN4R","t76Yzrbqcjbtehk6Wecf"]}}"#;
+
+            let issue_nf_asset_response: IssueNonFungibleAssetResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(issue_nf_asset_response, IssueNonFungibleAssetResponse {
+                status: String::from("success"),
+                data: IssueNonFungibleAssetResult {
+                    continuation_token: None,
+                    asset_issuance_id: None,
+                    asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                    nf_token_ids: Some(vec![
+                        String::from("tSWtJurhbkSJLGjjbN4R"),
+                        String::from("t76Yzrbqcjbtehk6Wecf"),
+                    ]),
+                },
+            });
+        }
+
+        #[test]
+        fn it_serialize_reissue_non_fungible_asset_request_cont_call() {
+            let reissue_non_fungible_asset_request = ReissueNonFungibleAssetRequest {
+                encrypt_nft_contents: None,
+                holding_devices: None,
+                async_: None,
+                continuation_token: Some(String::from("bXdG5i8EAPwA5RDdtXb3")),
+                non_fungible_tokens: None,
+                is_final: Some(true),
+            };
+
+            let json = serde_json::to_string(&reissue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"continuationToken":"bXdG5i8EAPwA5RDdtXb3","isFinal":true}"#);
+        }
+
+        #[test]
+        fn it_serialize_reissue_non_fungible_asset_request_non_cont_call_no_opts() {
+            let reissue_non_fungible_asset_request = ReissueNonFungibleAssetRequest {
+                encrypt_nft_contents: None,
+                holding_devices: None,
+                async_: None,
+                continuation_token: None,
+                non_fungible_tokens: Some(vec![
+                    NewNonFungibleTokenInfo {
+                        metadata: Some(NewNonFungibleTokenMetadata {
+                            name: String::from("TestNFToken_2"),
+                            description: Some(String::from("Second non-fungible token issued for test")),
+                            custom: None,
+                        }),
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("This is the contents of non-fungible token #2"),
+                            encoding: Encoding::UTF8,
+                        }),
+                    },
+                ]),
+                is_final: None,
+            };
+
+            let json = serde_json::to_string(&reissue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"nonFungibleTokens":[{"metadata":{"name":"TestNFToken_2","description":"Second non-fungible token issued for test"},"contents":{"data":"This is the contents of non-fungible token #2","encoding":"utf8"}}]}"#);
+        }
+
+        #[test]
+        fn it_serialize_reissue_non_fungible_asset_request_non_cont_call_all_opts() {
+            let reissue_non_fungible_asset_request = ReissueNonFungibleAssetRequest {
+                encrypt_nft_contents: Some(true),
+                holding_devices: Some(vec![
+                    DeviceId {
+                        id: String::from("drc3XdxNtzoucpw9xiRp"),
+                        is_prod_unique_id: Some(false)
+                    },
+                ]),
+                async_: Some(false),
+                continuation_token: None,
+                non_fungible_tokens: Some(vec![
+                    NewNonFungibleTokenInfo {
+                        metadata: Some(NewNonFungibleTokenMetadata {
+                            name: String::from("TestNFToken_2"),
+                            description: Some(String::from("Second non-fungible token issued for test")),
+                            custom: None,
+                        }),
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("This is the contents of non-fungible token #2"),
+                            encoding: Encoding::UTF8,
+                        }),
+                    },
+                ]),
+                is_final: Some(true),
+            };
+
+            let json = serde_json::to_string(&reissue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"encryptNFTContents":true,"holdingDevices":[{"id":"drc3XdxNtzoucpw9xiRp","isProdUniqueId":false}],"async":false,"nonFungibleTokens":[{"metadata":{"name":"TestNFToken_2","description":"Second non-fungible token issued for test"},"contents":{"data":"This is the contents of non-fungible token #2","encoding":"utf8"}}],"isFinal":true}"#);
+        }
+
+        #[test]
+        fn it_deserialize_reissue_non_fungible_asset_result_non_final() {
+            let json = r#"{"continuationToken":"bvveXeSB9KjR4j7EJ98i"}"#;
+
+            let reissue_nf_asset_result: ReissueNonFungibleAssetResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(reissue_nf_asset_result, ReissueNonFungibleAssetResult {
+                continuation_token: Some(String::from("bvveXeSB9KjR4j7EJ98i")),
+                asset_issuance_id: None,
+                nf_token_ids: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_reissue_non_fungible_asset_result_async() {
+            let json = r#"{"assetIssuanceId":"iWWKqTx6svmErabyCZKM"}"#;
+
+            let reissue_nf_asset_result: ReissueNonFungibleAssetResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(reissue_nf_asset_result, ReissueNonFungibleAssetResult {
+                continuation_token: None,
+                asset_issuance_id: Some(String::from("iWWKqTx6svmErabyCZKM")),
+                nf_token_ids: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_reissue_non_fungible_asset_result_final() {
+            let json = r#"{"nfTokenIds":["tDGQpGy627J6uAw4grYq","tpekkQwM8XA9Dt6q5XLk"]}"#;
+
+            let reissue_nf_asset_result: ReissueNonFungibleAssetResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(reissue_nf_asset_result, ReissueNonFungibleAssetResult {
+                continuation_token: None,
+                asset_issuance_id: None,
+                nf_token_ids: Some(vec![
+                    String::from("tDGQpGy627J6uAw4grYq"),
+                    String::from("tpekkQwM8XA9Dt6q5XLk"),
+                ]),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_reissue_non_fungible_asset_response() {
+            let json = r#"{"status":"success","data":{"nfTokenIds":["tDGQpGy627J6uAw4grYq","tpekkQwM8XA9Dt6q5XLk"]}}"#;
+
+            let reissue_nf_asset_response: ReissueNonFungibleAssetResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(reissue_nf_asset_response, ReissueNonFungibleAssetResponse {
+                status: String::from("success"),
+                data: ReissueNonFungibleAssetResult {
+                    continuation_token: None,
+                    asset_issuance_id: None,
+                    nf_token_ids: Some(vec![
+                        String::from("tDGQpGy627J6uAw4grYq"),
+                        String::from("tpekkQwM8XA9Dt6q5XLk"),
+                    ]),
+                },
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_asset_issuance_process_error() {
+            let json = r#"{"code":500,"message":"Internal server error"}"#;
+
+            let nf_asset_issuance_process_error: NFAssetIssuanceProcessError = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_process_error, NFAssetIssuanceProcessError {
+                code: 500,
+                message: String::from("Internal server error"),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_asset_issuance_process_progress_not_finished() {
+            let json = r#"{"percentProcessed":0,"done":false}"#;
+
+            let nf_asset_issuance_process_progress: NFAssetIssuanceProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_process_progress, NFAssetIssuanceProcessProgress {
+                percent_processed: 0,
+                done: false,
+                success: None,
+                error: None,
+                finish_date: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_asset_issuance_process_progress_finished_error() {
+            let json = r#"{"percentProcessed":25,"done":true,"success":false,"error":{"code":500,"message":"Internal server error"},"finishDate":"2022-11-01T16:55:21.000"}"#;
+
+            let nf_asset_issuance_process_progress: NFAssetIssuanceProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_process_progress, NFAssetIssuanceProcessProgress {
+                percent_processed: 25,
+                done: true,
+                success: Some(false),
+                error: Some(NFAssetIssuanceProcessError {
+                    code: 500,
+                    message: String::from("Internal server error"),
+                }),
+                finish_date: Some("2022-11-01T16:55:21.000".into()),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_asset_issuance_process_progress_finished_success() {
+            let json = r#"{"percentProcessed":100,"done":true,"success":true,"finishDate":"2022-11-01T16:57:46.123"}"#;
+
+            let nf_asset_issuance_process_progress: NFAssetIssuanceProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_process_progress, NFAssetIssuanceProcessProgress {
+                percent_processed: 100,
+                done: true,
+                success: Some(true),
+                error: None,
+                finish_date: Some("2022-11-01T16:57:46.123".into()),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_asset_issuance_result_not_reissuance() {
+            let json = r#"{"assetId":"ahfTzqgWAXnMR6Z57mcp","nfTokenIds":["tSWtJurhbkSJLGjjbN4R","t76Yzrbqcjbtehk6Wecf"]}"#;
+
+            let nf_asset_issuance_result: NFAssetIssuanceResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_result, NFAssetIssuanceResult {
+                asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                nf_token_ids: vec![
+                    String::from("tSWtJurhbkSJLGjjbN4R"),
+                    String::from("t76Yzrbqcjbtehk6Wecf"),
+                ],
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_asset_issuance_result_reissuance() {
+            let json = r#"{"nfTokenIds":["tDGQpGy627J6uAw4grYq"]}"#;
+
+            let nf_asset_issuance_result: NFAssetIssuanceResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_result, NFAssetIssuanceResult {
+                asset_id: None,
+                nf_token_ids: vec![
+                    String::from("tDGQpGy627J6uAw4grYq"),
+                ],
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_asset_issuance_progress_result_no_opts() {
+            let json = r#"{"progress":{"percentProcessed":25,"done":true,"success":false,"error":{"code":500,"message":"Internal server error"},"finishDate":"2022-11-01T16:55:21.000"}}"#;
+
+            let nf_asset_issuance_progress_result: RetrieveNFAssetIssuanceProgressResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_progress_result, RetrieveNFAssetIssuanceProgressResult {
+                asset_id: None,
+                progress: NFAssetIssuanceProcessProgress {
+                    percent_processed: 25,
+                    done: true,
+                    success: Some(false),
+                    error: Some(NFAssetIssuanceProcessError {
+                        code: 500,
+                        message: String::from("Internal server error"),
+                    }),
+                    finish_date: Some("2022-11-01T16:55:21.000".into()),
+                },
+                result: None
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_asset_issuance_progress_result_all_opts() {
+            let json = r#"{"assetId":"ahfTzqgWAXnMR6Z57mcp","progress":{"percentProcessed":100,"done":true,"success":true,"finishDate":"2022-11-01T16:57:46.123"},"result":{"nfTokenIds":["tDGQpGy627J6uAw4grYq"]}}"#;
+
+            let nf_asset_issuance_progress_result: RetrieveNFAssetIssuanceProgressResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_progress_result, RetrieveNFAssetIssuanceProgressResult {
+                asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                progress: NFAssetIssuanceProcessProgress {
+                    percent_processed: 100,
+                    done: true,
+                    success: Some(true),
+                    error: None,
+                    finish_date: Some("2022-11-01T16:57:46.123".into()),
+                },
+                result: Some(NFAssetIssuanceResult {
+                    asset_id: None,
+                    nf_token_ids: vec![
+                        String::from("tDGQpGy627J6uAw4grYq"),
+                    ],
+                }),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_asset_issuance_progress_response() {
+            let json = r#"{"status":"success","data":{"assetId":"ahfTzqgWAXnMR6Z57mcp","progress":{"percentProcessed":100,"done":true,"success":true,"finishDate":"2022-11-01T16:57:46.123"},"result":{"nfTokenIds":["tDGQpGy627J6uAw4grYq"]}}}"#;
+            let nf_asset_issuance_progress_response: RetrieveNFAssetIssuanceProgressResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_asset_issuance_progress_response, RetrieveNFAssetIssuanceProgressResponse {
+                status: String::from("success"),
+                data: RetrieveNFAssetIssuanceProgressResult {
+                    asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                    progress: NFAssetIssuanceProcessProgress {
+                        percent_processed: 100,
+                        done: true,
+                        success: Some(true),
+                        error: None,
+                        finish_date: Some("2022-11-01T16:57:46.123".into()),
+                    },
+                    result: Some(NFAssetIssuanceResult {
+                        asset_id: None,
+                        nf_token_ids: vec![
+                            String::from("tDGQpGy627J6uAw4grYq"),
+                        ],
+                    }),
+                },
+            });
+        }
+
+        #[test]
+        fn it_deserialize_non_fungible_token_metadata_no_opts() {
+            let json = r#"{"name":"TestNFToken_1","contentsEncrypted":true,"contentsURL":"https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq"}"#;
+            let non_fungible_token_metadata: NonFungibleTokenMetadata = serde_json::from_str(json).unwrap();
+
+            assert_eq!(non_fungible_token_metadata, NonFungibleTokenMetadata {
+                name: String::from("TestNFToken_1"),
+                description: None,
+                contents_encrypted: true,
+                contents_url: String::from("https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq"),
+                custom: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_non_fungible_token_metadata_all_opts() {
+            let json = r#"{"name":"TestNFToken_1","description":"First non-fungible token issued for test","contentsEncrypted":true,"contentsURL":"https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq","custom":{"sensitiveProps":{"senseProp1":"XYZ","senseProp2":"456"},"propNum":5,"propStr":"ABC","propBool":true}}"#;
+            let non_fungible_token_metadata: NonFungibleTokenMetadata = serde_json::from_str(json).unwrap();
+
+            assert_eq!(non_fungible_token_metadata, NonFungibleTokenMetadata {
+                name: String::from("TestNFToken_1"),
+                description: Some(String::from("First non-fungible token issued for test")),
+                contents_encrypted: true,
+                contents_url: String::from("https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq"),
+                custom: json_obj!({
+                    "sensitiveProps": {
+                        "senseProp1": "XYZ",
+                        "senseProp2": "456"
+                    },
+                    "propNum": 5,
+                    "propStr": "ABC",
+                    "propBool": true
+                }),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_non_fungible_token_contents() {
+            let json = r#"{"data":"Q29udGVudHMgb2YgZmlyc3QgdG9rZW4gb2YgQ2F0ZW5pcyBub24tZnVuZ2libGUgYXNzZXQgIzEw"}"#;
+            let non_fungible_token_contents: NonFungibleTokenContents = serde_json::from_str(json).unwrap();
+
+            assert_eq!(non_fungible_token_contents, NonFungibleTokenContents {
+                data: String::from("Q29udGVudHMgb2YgZmlyc3QgdG9rZW4gb2YgQ2F0ZW5pcyBub24tZnVuZ2libGUgYXNzZXQgIzEw"),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_non_fungible_token_info_no_contents() {
+            let json = r#"{"assetId":"a5sCytXhvRCCGZ7PhQ6o","metadata":{"name":"TestNFToken_1","description":"First non-fungible token issued for test","contentsEncrypted":true,"contentsURL":"https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq","custom":{"sensitiveProps":{"senseProp1":"XYZ","senseProp2":"456"},"propNum":5,"propStr":"ABC","propBool":true}}}"#;
+            let non_fungible_token_info: NonFungibleTokenInfo = serde_json::from_str(json).unwrap();
+
+            assert_eq!(non_fungible_token_info, NonFungibleTokenInfo {
+                asset_id: Some(String::from("a5sCytXhvRCCGZ7PhQ6o")),
+                metadata: Some(NonFungibleTokenMetadata {
+                    name: String::from("TestNFToken_1"),
+                    description: Some(String::from("First non-fungible token issued for test")),
+                    contents_encrypted: true,
+                    contents_url: String::from("https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq"),
+                    custom: json_obj!({
+                        "sensitiveProps": {
+                            "senseProp1": "XYZ",
+                            "senseProp2": "456"
+                        },
+                        "propNum": 5,
+                        "propStr": "ABC",
+                        "propBool": true
+                    }),
+                }),
+                contents: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_non_fungible_token_info_only_contents() {
+            let json = r#"{"contents":{"data":"This is the contents of non-fungible token #1"}}"#;
+            let non_fungible_token_info: NonFungibleTokenInfo = serde_json::from_str(json).unwrap();
+
+            assert_eq!(non_fungible_token_info, NonFungibleTokenInfo {
+                asset_id: None,
+                metadata: None,
+                contents: Some(NonFungibleTokenContents {
+                    data: String::from("This is the contents of non-fungible token #1"),
+                }),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_non_fungible_token_result_single_data_chunk() {
+            let json = r#"{"nonFungibleToken":{"assetId":"a5sCytXhvRCCGZ7PhQ6o","metadata":{"name":"TestNFToken_1","description":"First non-fungible token issued for test","contentsEncrypted":true,"contentsURL":"https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq","custom":{"sensitiveProps":{"senseProp1":"XYZ","senseProp2":"456"},"propNum":5,"propStr":"ABC","propBool":true}},"contents":{"data":"This is the contents of non-fungible token #1"}}}"#;
+            let retrieve_non_fungible_token_result: RetrieveNonFungibleTokenResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(retrieve_non_fungible_token_result, RetrieveNonFungibleTokenResult {
+                continuation_token: None,
+                token_retrieval_id: None,
+                non_fungible_token: Some(NonFungibleTokenInfo {
+                    asset_id: Some(String::from("a5sCytXhvRCCGZ7PhQ6o")),
+                    metadata: Some(NonFungibleTokenMetadata {
+                        name: String::from("TestNFToken_1"),
+                        description: Some(String::from("First non-fungible token issued for test")),
+                        contents_encrypted: true,
+                        contents_url: String::from("https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq"),
+                        custom: json_obj!({
+                            "sensitiveProps": {
+                                "senseProp1": "XYZ",
+                                "senseProp2": "456"
+                            },
+                            "propNum": 5,
+                            "propStr": "ABC",
+                            "propBool": true
+                        }),
+                    }),
+                    contents: Some(NonFungibleTokenContents {
+                        data: String::from("This is the contents of non-fungible token #1"),
+                    }),
+                }),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_non_fungible_token_result_multiple_data_chunk() {
+            let json = r#"{"continuationToken":"eXxdwcoXm3dJBF7Ej759","nonFungibleToken":{"assetId":"ahfTzqgWAXnMR6Z57mcp","metadata":{"name":"TestNFToken_2","description":"Second non-fungible token issued for test","contentsEncrypted":true,"contentsURL":"https://localhost:8080/ipfs/Qmabg5V61n4hjcUjpGWzznLWmnJ7NEiTcgD8Xohb9kc5Je"},"contents":{"data":"This is the beginning of the contents of non-fungible token #2..."}}}"#;
+            let retrieve_non_fungible_token_result: RetrieveNonFungibleTokenResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(retrieve_non_fungible_token_result, RetrieveNonFungibleTokenResult {
+                continuation_token: Some(String::from("eXxdwcoXm3dJBF7Ej759")),
+                token_retrieval_id: None,
+                non_fungible_token: Some(NonFungibleTokenInfo {
+                    asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                    metadata: Some(NonFungibleTokenMetadata {
+                        name: String::from("TestNFToken_2"),
+                        description: Some(String::from("Second non-fungible token issued for test")),
+                        contents_encrypted: true,
+                        contents_url: String::from("https://localhost:8080/ipfs/Qmabg5V61n4hjcUjpGWzznLWmnJ7NEiTcgD8Xohb9kc5Je"),
+                        custom: None,
+                    }),
+                    contents: Some(NonFungibleTokenContents {
+                        data: String::from("This is the beginning of the contents of non-fungible token #2..."),
+                    }),
+                }),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_non_fungible_token_result_async() {
+            let json = r#"{"tokenRetrievalId":"rGEcL2HhoarCupvbkrv9"}"#;
+            let retrieve_non_fungible_token_result: RetrieveNonFungibleTokenResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(retrieve_non_fungible_token_result, RetrieveNonFungibleTokenResult {
+                continuation_token: None,
+                token_retrieval_id: Some(String::from("rGEcL2HhoarCupvbkrv9")),
+                non_fungible_token: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_non_fungible_token_response() {
+            let json = r#"{"status":"success","data":{"nonFungibleToken":{"assetId":"a5sCytXhvRCCGZ7PhQ6o","metadata":{"name":"TestNFToken_1","description":"First non-fungible token issued for test","contentsEncrypted":true,"contentsURL":"https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq","custom":{"sensitiveProps":{"senseProp1":"XYZ","senseProp2":"456"},"propNum":5,"propStr":"ABC","propBool":true}},"contents":{"data":"This is the contents of non-fungible token #1"}}}}"#;
+            let retrieve_non_fungible_token_response: RetrieveNonFungibleTokenResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(retrieve_non_fungible_token_response, RetrieveNonFungibleTokenResponse {
+                status: String::from("success"),
+                data: RetrieveNonFungibleTokenResult {
+                    continuation_token: None,
+                    token_retrieval_id: None,
+                    non_fungible_token: Some(NonFungibleTokenInfo {
+                        asset_id: Some(String::from("a5sCytXhvRCCGZ7PhQ6o")),
+                        metadata: Some(NonFungibleTokenMetadata {
+                            name: String::from("TestNFToken_1"),
+                            description: Some(String::from("First non-fungible token issued for test")),
+                            contents_encrypted: true,
+                            contents_url: String::from("https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq"),
+                            custom: json_obj!({
+                            "sensitiveProps": {
+                                "senseProp1": "XYZ",
+                                "senseProp2": "456"
+                            },
+                            "propNum": 5,
+                            "propStr": "ABC",
+                            "propBool": true
+                        }),
+                        }),
+                        contents: Some(NonFungibleTokenContents {
+                            data: String::from("This is the contents of non-fungible token #1"),
+                        }),
+                    }),
+                }
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_retrieval_process_error() {
+            let json = r#"{"code":500,"message":"Internal server error"}"#;
+
+            let nf_token_retrieval_process_error: NFTokenRetrievalProcessError = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_retrieval_process_error, NFTokenRetrievalProcessError {
+                code: 500,
+                message: String::from("Internal server error"),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_retrieval_process_progress_not_finished() {
+            let json = r#"{"bytesRetrieved":0,"done":false}"#;
+
+            let nf_token_retrieval_process_progress: NFTokenRetrievalProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_retrieval_process_progress, NFTokenRetrievalProcessProgress {
+                bytes_retrieved: 0,
+                done: false,
+                success: None,
+                error: None,
+                finish_date: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_retrieval_process_progress_finished_error() {
+            let json = r#"{"bytesRetrieved":512,"done":true,"success":false,"error":{"code":500,"message":"Internal server error"},"finishDate":"2022-11-05T12:01:47.483"}"#;
+
+            let nf_token_retrieval_process_progress: NFTokenRetrievalProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_retrieval_process_progress, NFTokenRetrievalProcessProgress {
+                bytes_retrieved: 512,
+                done: true,
+                success: Some(false),
+                error: Some(NFTokenRetrievalProcessError {
+                    code: 500,
+                    message: String::from("Internal server error"),
+                }),
+                finish_date: Some("2022-11-05T12:01:47.483".into()),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_retrieval_process_progress_finished_success() {
+            let json = r#"{"bytesRetrieved":1024,"done":true,"success":true,"finishDate":"2022-11-05T12:06:32.405"}"#;
+
+            let nf_token_retrieval_process_progress: NFTokenRetrievalProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_retrieval_process_progress, NFTokenRetrievalProcessProgress {
+                bytes_retrieved: 1024,
+                done: true,
+                success: Some(true),
+                error: None,
+                finish_date: Some("2022-11-05T12:06:32.405".into()),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_token_retrieval_progress_result_no_opts() {
+            let json = r#"{"progress":{"bytesRetrieved":512,"done":true,"success":false,"error":{"code":500,"message":"Internal server error"},"finishDate":"2022-11-05T12:01:47.483"}}"#;
+
+            let nf_token_retrieval_progress_result: RetrieveNFTokenRetrievalProgressResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_retrieval_progress_result, RetrieveNFTokenRetrievalProgressResult {
+                progress: NFTokenRetrievalProcessProgress {
+                    bytes_retrieved: 512,
+                    done: true,
+                    success: Some(false),
+                    error: Some(NFTokenRetrievalProcessError {
+                        code: 500,
+                        message: String::from("Internal server error"),
+                    }),
+                    finish_date: Some("2022-11-05T12:01:47.483".into()),
+                },
+                continuation_token: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_token_retrieval_progress_result_all_opts() {
+            let json = r#"{"progress":{"bytesRetrieved":1024,"done":true,"success":true,"finishDate":"2022-11-05T12:06:32.405"},"continuationToken":"eLNuL4M46n3BD57GNEuy"}"#;
+
+            let nf_token_retrieval_progress_result: RetrieveNFTokenRetrievalProgressResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_retrieval_progress_result, RetrieveNFTokenRetrievalProgressResult {
+                progress: NFTokenRetrievalProcessProgress {
+                    bytes_retrieved: 1024,
+                    done: true,
+                    success: Some(true),
+                    error: None,
+                    finish_date: Some("2022-11-05T12:06:32.405".into()),
+                },
+                continuation_token: Some(String::from("eLNuL4M46n3BD57GNEuy")),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_token_retrieval_progress_response() {
+            let json = r#"{"status":"success","data":{"progress":{"bytesRetrieved":1024,"done":true,"success":true,"finishDate":"2022-11-05T12:06:32.405"},"continuationToken":"eLNuL4M46n3BD57GNEuy"}}"#;
+            let nf_token_retrieval_progress_response: RetrieveNFTokenRetrievalProgressResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_retrieval_progress_response, RetrieveNFTokenRetrievalProgressResponse {
+                status: String::from("success"),
+                data: RetrieveNFTokenRetrievalProgressResult {
+                    progress: NFTokenRetrievalProcessProgress {
+                        bytes_retrieved: 1024,
+                        done: true,
+                        success: Some(true),
+                        error: None,
+                        finish_date: Some("2022-11-05T12:06:32.405".into()),
+                    },
+                    continuation_token: Some(String::from("eLNuL4M46n3BD57GNEuy")),
+                },
+            });
+        }
+
+        #[test]
+        fn it_deserialize_transfer_non_fungible_token_result() {
+            let json = r#"{"success":true}"#;
+            let transfer_non_fungible_token_result: TransferNonFungibleTokenResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(transfer_non_fungible_token_result, TransferNonFungibleTokenResult {
+                token_transfer_id: None,
+                success: Some(true),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_transfer_non_fungible_token_result_async() {
+            let json = r#"{"tokenTransferId":"xuYnPMKQSBXi28wRaZpN"}"#;
+            let transfer_non_fungible_token_result: TransferNonFungibleTokenResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(transfer_non_fungible_token_result, TransferNonFungibleTokenResult {
+                token_transfer_id: Some(String::from("xuYnPMKQSBXi28wRaZpN")),
+                success: None,
+            });
+        }
+
+        #[test]
+        fn it_serialize_transfer_non_fungible_token_request() {
+            let transfer_non_fungible_token_request = TransferNonFungibleTokenRequest {
+                receiving_device: DeviceId {
+                    id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    is_prod_unique_id: Some(false)
+                },
+                async_: None,
+            };
+
+            let json = serde_json::to_string(&transfer_non_fungible_token_request).unwrap();
+
+            assert_eq!(json, r#"{"receivingDevice":{"id":"drc3XdxNtzoucpw9xiRp","isProdUniqueId":false}}"#);
+        }
+
+        #[test]
+        fn it_serialize_transfer_non_fungible_token_request_async() {
+            let transfer_non_fungible_token_request = TransferNonFungibleTokenRequest {
+                receiving_device: DeviceId {
+                    id: String::from("drc3XdxNtzoucpw9xiRp"),
+                    is_prod_unique_id: Some(false)
+                },
+                async_: Some(true),
+            };
+
+            let json = serde_json::to_string(&transfer_non_fungible_token_request).unwrap();
+
+            assert_eq!(json, r#"{"receivingDevice":{"id":"drc3XdxNtzoucpw9xiRp","isProdUniqueId":false},"async":true}"#);
+        }
+
+        #[test]
+        fn it_deserialize_transfer_non_fungible_token_response() {
+            let json = r#"{"status":"success","data":{"success":true}}"#;
+            let transfer_non_fungible_token_response: TransferNonFungibleTokenResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(transfer_non_fungible_token_response, TransferNonFungibleTokenResponse {
+                status: String::from("success"),
+                data: TransferNonFungibleTokenResult {
+                    token_transfer_id: None,
+                    success: Some(true),
+                },
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_data_manipulation_progress_no_opts() {
+            let json = r#"{"bytesRead":1234}"#;
+
+            let nf_token_data_manipulation_progress: NFTokenDataManipulationProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_data_manipulation_progress, NFTokenDataManipulationProgress {
+                bytes_read: 1234,
+                bytes_written: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_data_manipulation_progress_all_opts() {
+            let json = r#"{"bytesRead":1234,"bytesWritten":1024}"#;
+
+            let nf_token_data_manipulation_progress: NFTokenDataManipulationProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_data_manipulation_progress, NFTokenDataManipulationProgress {
+                bytes_read: 1234,
+                bytes_written: Some(1024),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_transfer_process_error() {
+            let json = r#"{"code":500,"message":"Internal server error"}"#;
+
+            let nf_token_transfer_process_error: NFTokenTransferProcessError = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_transfer_process_error, NFTokenTransferProcessError {
+                code: 500,
+                message: String::from("Internal server error"),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_transfer_process_progress_not_finished() {
+            let json = r#"{"dataManipulation":{"bytesRead":0},"done":false}"#;
+
+            let nf_token_transfer_process_progress: NFTokenTransferProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_transfer_process_progress, NFTokenTransferProcessProgress {
+                data_manipulation: NFTokenDataManipulationProgress {
+                    bytes_read: 0,
+                    bytes_written: None
+                },
+                done: false,
+                success: None,
+                error: None,
+                finish_date: None,
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_transfer_process_progress_finished_error() {
+            let json = r#"{"dataManipulation":{"bytesRead":512},"done":true,"success":false,"error":{"code":500,"message":"Internal server error"},"finishDate":"2022-11-07T09:05:52.972"}"#;
+
+            let nf_token_transfer_process_progress: NFTokenTransferProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_transfer_process_progress, NFTokenTransferProcessProgress {
+                data_manipulation: NFTokenDataManipulationProgress {
+                    bytes_read: 512,
+                    bytes_written: None
+                },
+                done: true,
+                success: Some(false),
+                error: Some(NFTokenRetrievalProcessError {
+                    code: 500,
+                    message: String::from("Internal server error"),
+                }),
+                finish_date: Some("2022-11-07T09:05:52.972".into()),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_nf_token_transfer_process_progress_finished_success() {
+            let json = r#"{"dataManipulation":{"bytesRead":1234,"bytesWritten":1024},"done":true,"success":true,"finishDate":"2022-11-07T10:09:57.384"}"#;
+
+            let nf_token_transfer_process_progress: NFTokenTransferProcessProgress = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_transfer_process_progress, NFTokenTransferProcessProgress {
+                data_manipulation: NFTokenDataManipulationProgress {
+                    bytes_read: 1234,
+                    bytes_written: Some(1024),
+                },
+                done: true,
+                success: Some(true),
+                error: None,
+                finish_date: Some("2022-11-07T10:09:57.384".into()),
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_token_transfer_progress_result_no_opts() {
+            let json = r#"{"progress":{"dataManipulation":{"bytesRead":1234,"bytesWritten":1024},"done":true,"success":true,"finishDate":"2022-11-07T10:09:57.384"}}"#;
+
+            let nf_token_transfer_progress_result: RetrieveNFTokenTransferProgressResult = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_transfer_progress_result, RetrieveNFTokenTransferProgressResult {
+                progress: NFTokenTransferProcessProgress {
+                    data_manipulation: NFTokenDataManipulationProgress {
+                        bytes_read: 1234,
+                        bytes_written: Some(1024),
+                    },
+                    done: true,
+                    success: Some(true),
+                    error: None,
+                    finish_date: Some("2022-11-07T10:09:57.384".into()),
+                },
+            });
+        }
+
+        #[test]
+        fn it_deserialize_retrieve_nf_token_transfer_progress_response() {
+            let json = r#"{"status":"success","data":{"progress":{"dataManipulation":{"bytesRead":1234,"bytesWritten":1024},"done":true,"success":true,"finishDate":"2022-11-07T10:09:57.384"}}}"#;
+            let nf_token_transfer_progress_response: RetrieveNFTokenTransferProgressResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(nf_token_transfer_progress_response, RetrieveNFTokenTransferProgressResponse {
+                status: String::from("success"),
+                data: RetrieveNFTokenTransferProgressResult {
+                    progress: NFTokenTransferProcessProgress {
+                        data_manipulation: NFTokenDataManipulationProgress {
+                            bytes_read: 1234,
+                            bytes_written: Some(1024),
+                        },
+                        done: true,
+                        success: Some(true),
+                        error: None,
+                        finish_date: Some("2022-11-07T10:09:57.384".into()),
+                    },
+                },
+            });
+        }
     }
 }

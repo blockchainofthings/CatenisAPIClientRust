@@ -1,5 +1,6 @@
 use catenis_api_client::{
     CatenisClient, ClientOptions, Environment, Result,
+    api::AssetIssuanceEventEntry,
 };
 
 fn main() -> Result<()> {
@@ -32,9 +33,22 @@ fn main() -> Result<()> {
         let issuance_event = &result.issuance_events[idx];
 
         println!("Issuance event #{}:", idx + 1);
-        println!(" - asset amount: {}", issuance_event.amount);
-        println!(" - device to which issued amount had been assigned: {:?}", issuance_event.holding_device);
-        println!(" - date of issuance: {}", issuance_event.date);
+
+        match issuance_event {
+            AssetIssuanceEventEntry::Regular(regular_asset_event) => {
+                println!(" - asset amount: {}", regular_asset_event.amount);
+                println!(" - device to which issued amount had been assigned: {:?}", regular_asset_event.holding_device);
+                println!(" - date of issuance: {}", regular_asset_event.date);
+            }
+            AssetIssuanceEventEntry::NonFungible(non_fungible_asset_event) => {
+                println!(" - IDs of issued non-fungible tokens: {:?}", non_fungible_asset_event.nf_token_ids);
+                println!(
+                    " - devices to which issued non-fungible tokens have been assigned: {:?}",
+                    non_fungible_asset_event.holding_devices
+                );
+                println!(" - date of issuance: {}", non_fungible_asset_event.date);
+            }
+        }
     }
 
     if result.has_more {

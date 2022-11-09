@@ -2,7 +2,7 @@
 //!
 //! This library is used to make it easier to access the Catenis API services.
 //!
-//! > **Note**: this release of the library targets **version 0.11** of the Catenis API.
+//! > **Note**: this release of the library targets **version 0.12** of the Catenis API.
 //!
 //! ## Usage
 //!
@@ -93,6 +93,10 @@ use std::{
     },
 };
 
+pub use serde_json::Value as JsonValue;
+pub use serde_json::Map as JsonMap;
+pub use api::JsonObject;
+
 #[macro_use]
 mod macro_impl;
 
@@ -123,7 +127,7 @@ pub use notification::WsNotifyChannel;
 pub(crate) const X_BCOT_TIMESTAMP: &str = "x-bcot-timestamp";
 const DEFAULT_BASE_URL: &str = "https://catenis.io/";
 const API_BASE_URL_PATH: &str = "api/:version/";
-const DEFAULT_API_VERSION: ApiVersion = ApiVersion(0, 11);
+const DEFAULT_API_VERSION: ApiVersion = ApiVersion(0, 12);
 
 type KVList<'a> = &'a [(&'a str, &'a str)];
 

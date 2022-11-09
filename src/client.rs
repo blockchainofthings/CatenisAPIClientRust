@@ -1362,13 +1362,25 @@ impl CatenisClient {
     ///     Some(0),
     /// )?;
     ///
-    /// for issuance_events in result.issuance_events {
-    ///     println!("Issuance date: {}", issuance_events.date);
-    ///     println!(" - issued amount: {}", issuance_events.amount);
-    ///     println!(
-    ///         " - device to which issued amount had been assigned: {:?}\n",
-    ///         issuance_events.holding_device
-    ///     );
+    /// for issuance_event in result.issuance_events {
+    ///     match issuance_event {
+    ///         AssetIssuanceEventEntry::Regular(regular_asset_event) => {
+    ///             println!("Issuance date: {}", regular_asset_event.date);
+    ///             println!(" - issued amount: {}", regular_asset_event.amount);
+    ///             println!(
+    ///                 " - device to which issued amount had been assigned: {:?}\n",
+    ///                 regular_asset_event.holding_device
+    ///             );
+    ///         }
+    ///         AssetIssuanceEventEntry::NonFungible(non_fungible_asset_event) => {
+    ///             println!("Issuance date: {}", non_fungible_asset_event.date);
+    ///             println!(" - IDs of issued non-fungible tokens: {:?}", non_fungible_asset_event.nf_token_ids);
+    ///             println!(
+    ///                 " - devices to which issued non-fungible tokens have been assigned: {:?}\n",
+    ///                 non_fungible_asset_event.holding_devices
+    ///             );
+    ///         }
+    ///     }
     /// }
     ///
     /// if result.has_more {
@@ -2585,6 +2597,642 @@ impl CatenisClient {
         let res = self.sign_and_send_request(req)?;
 
         Ok(Self::parse_response::<ListNotificationEventsResponse>(res)?.data)
+    }
+
+    /// Call *Issue Non-Fungible Asset* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # fn main() -> Result<()> {
+    /// # let mut ctn_client = CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.issue_non_fungible_asset(
+    ///     NFAssetIssuanceInfoOrContToken::IssuanceInfo(NonFungibleAssetIssuanceInfo {
+    ///         asset_info: Some(NewNonFungibleAssetInfo {
+    ///             name: String::from("NFA 1"),
+    ///             description: Some(String::from("Non-fungible asset #1 for testing")),
+    ///             can_reissue: true
+    ///         }),
+    ///         encrypt_nft_contents: None,
+    ///         holding_devices: None,
+    ///         async_: None,
+    ///     }),
+    ///     Some(vec![
+    ///         NewNonFungibleTokenInfo {
+    ///             metadata: Some(NewNonFungibleTokenMetadata {
+    ///                 name: String::from("NFA1 NFT 1"),
+    ///                 description: Some(String::from("First token of non-fungible asset #1")),
+    ///                 custom: None,
+    ///             }),
+    ///             contents: Some(NewNonFungibleTokenContents {
+    ///                 data: String::from("Contents of first token of non-fungible asset #1"),
+    ///                 encoding: Encoding::UTF8
+    ///             }),
+    ///         },
+    ///         NewNonFungibleTokenInfo {
+    ///             metadata: Some(NewNonFungibleTokenMetadata {
+    ///                 name: String::from("NFA1 NFT 2"),
+    ///                 description: Some(String::from("Second token of non-fungible asset #1")),
+    ///                 custom: None,
+    ///             }),
+    ///             contents: Some(NewNonFungibleTokenContents {
+    ///                 data: String::from("Contents of second token of non-fungible asset #1"),
+    ///                 encoding: Encoding::UTF8
+    ///             }),
+    ///         },
+    ///     ]),
+    ///     Some(true)
+    /// )?;
+    ///
+    /// println!("ID of newly created non-fungible asset: {}", result.asset_id.unwrap());
+    /// println!("IDs of newly issued non-fungible tokens: {:?}", result.nf_token_ids.unwrap());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn issue_non_fungible_asset(
+        &mut self,
+        issuance_info_or_cont_token: NFAssetIssuanceInfoOrContToken,
+        non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+        is_final: Option<bool>
+    ) -> Result<IssueNonFungibleAssetResult> {
+        let body = match issuance_info_or_cont_token {
+            NFAssetIssuanceInfoOrContToken::IssuanceInfo(issuance_info) => {
+                IssueNonFungibleAssetRequest {
+                    asset_info: issuance_info.asset_info,
+                    encrypt_nft_contents: issuance_info.encrypt_nft_contents,
+                    holding_devices: issuance_info.holding_devices,
+                    async_: issuance_info.async_,
+                    continuation_token: None,
+                    non_fungible_tokens,
+                    is_final,
+                }
+            },
+            NFAssetIssuanceInfoOrContToken::ContinuationToken(cont_token) => {
+                IssueNonFungibleAssetRequest {
+                    asset_info: None,
+                    encrypt_nft_contents: None,
+                    holding_devices: None,
+                    async_: None,
+                    continuation_token: Some(cont_token),
+                    non_fungible_tokens,
+                    is_final,
+                }
+            }
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/non-fungible/issue",
+            body_json,
+            None::<KVList>,
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<IssueNonFungibleAssetResponse>(res)?.data)
+    }
+
+    /// Call *Reissue Non-Fungible Asset* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # fn main() -> Result<()> {
+    /// # let mut ctn_client = CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.reissue_non_fungible_asset(
+    ///     "ahfTzqgWAXnMR6Z57mcp",
+    ///     NFAssetReissuanceInfoOrContToken::ReissuanceInfo(NonFungibleAssetReissuanceInfo {
+    ///         encrypt_nft_contents: None,
+    ///         holding_devices: None,
+    ///         async_: None,
+    ///     }),
+    ///     Some(vec![
+    ///         NewNonFungibleTokenInfo {
+    ///             metadata: Some(NewNonFungibleTokenMetadata {
+    ///                 name: String::from("NFA1 NFT 3"),
+    ///                 description: Some(String::from("Third token of non-fungible asset #1")),
+    ///                 custom: None,
+    ///             }),
+    ///             contents: Some(NewNonFungibleTokenContents {
+    ///                 data: String::from("Contents of third token of non-fungible asset #1"),
+    ///                 encoding: Encoding::UTF8
+    ///             }),
+    ///         },
+    ///         NewNonFungibleTokenInfo {
+    ///             metadata: Some(NewNonFungibleTokenMetadata {
+    ///                 name: String::from("NFA1 NFT 4"),
+    ///                 description: Some(String::from("Forth token of non-fungible asset #1")),
+    ///                 custom: None,
+    ///             }),
+    ///             contents: Some(NewNonFungibleTokenContents {
+    ///                 data: String::from("Contents of forth token of non-fungible asset #1"),
+    ///                 encoding: Encoding::UTF8
+    ///             }),
+    ///         },
+    ///     ]),
+    ///     Some(true)
+    /// )?;
+    ///
+    /// println!("IDs of newly issued non-fungible tokens: {:?}", result.nf_token_ids.unwrap());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn reissue_non_fungible_asset(
+        &mut self,
+        asset_id: &str,
+        reissuance_info_or_cont_token: NFAssetReissuanceInfoOrContToken,
+        non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+        is_final: Option<bool>
+    ) -> Result<ReissueNonFungibleAssetResult> {
+        let body = match reissuance_info_or_cont_token {
+            NFAssetReissuanceInfoOrContToken::ReissuanceInfo(reissuance_info) => {
+                ReissueNonFungibleAssetRequest {
+                    encrypt_nft_contents: reissuance_info.encrypt_nft_contents,
+                    holding_devices: reissuance_info.holding_devices,
+                    async_: reissuance_info.async_,
+                    continuation_token: None,
+                    non_fungible_tokens,
+                    is_final,
+                }
+            },
+            NFAssetReissuanceInfoOrContToken::ContinuationToken(cont_token) => {
+                ReissueNonFungibleAssetRequest {
+                    encrypt_nft_contents: None,
+                    holding_devices: None,
+                    async_: None,
+                    continuation_token: Some(cont_token),
+                    non_fungible_tokens,
+                    is_final,
+                }
+            }
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/non-fungible/:asset_id/issue",
+            body_json,
+            Some(&[
+                ("asset_id", asset_id)
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<ReissueNonFungibleAssetResponse>(res)?.data)
+    }
+
+    /// Call *Retrieve Non-Fungible Asset Issuance Progress* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # fn main() -> Result<()> {
+    /// # let mut ctn_client = CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_non_fungible_asset_issuance_progress(
+    ///     "iWWKqTx6svmErabyCZKM",
+    /// )?;
+    ///
+    /// if let Some(asset_id) = result.asset_id {
+    ///     println!("Reissuance for non-fungible asset: {}", asset_id);
+    /// }
+    ///
+    /// println!("Percent processed: {}", result.progress.percent_processed.to_string());
+    ///
+    /// if result.progress.done {
+    ///     if let Some(true) = result.progress.success {
+    ///         // Get result
+    ///         let issuance_result = result.result.unwrap();
+    ///
+    ///         if let Some(asset_id) = issuance_result.asset_id {
+    ///             println!("ID of newly created non-fungible asset: {}", asset_id);
+    ///         }
+    ///
+    ///         println!("IDs of newly issued non-fungible tokens:: {:?}", issuance_result.nf_token_ids);
+    ///     } else {
+    ///         // Process error
+    ///         let error = result.progress.error.unwrap();
+    ///
+    ///         println!("Asynchronous processing error: [{}] - {}", error.code, error.message);
+    ///     }
+    /// } else {
+    ///     // Asynchronous processing not done yet. Continue pooling
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn retrieve_non_fungible_asset_issuance_progress(&mut self, issuance_id: &str) -> Result<RetrieveNFAssetIssuanceProgressResult> {
+        let req = self.get_request(
+            "assets/non-fungible/issuance/:issuance_id",
+            Some(&[
+                ("issuance_id", issuance_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveNFAssetIssuanceProgressResponse>(res)?.data)
+    }
+
+    /// Call *Retrieve Non-Fungible Token* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// #[derive(Debug, Clone, Eq, PartialEq)]
+    /// struct NFTokenData {
+    ///     pub asset_id: Option<String>,
+    ///     pub metadata: Option<NonFungibleTokenMetadata>,
+    ///     pub contents: Option<Vec<String>>,
+    /// }
+    ///
+    /// # fn main() -> Result<()> {
+    /// # let mut ctn_client = CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let mut retrieve_options = RetrieveNonFungibleTokenOptions {
+    ///     retrieve_contents: None,
+    ///     contents_only: None,
+    ///     contents_encoding: None,
+    ///     data_chunk_size: Some(1024),
+    ///     async_: None,
+    ///     continuation_token: None,
+    /// };
+    /// let mut nf_token_data = NFTokenData {
+    ///     asset_id: None,
+    ///     metadata: None,
+    ///     contents: None,
+    ///  };
+    /// let mut nf_token_contents = vec![];
+    ///
+    /// loop {
+    ///     let is_init_call = retrieve_options.continuation_token.is_none();
+    ///
+    ///     let result = ctn_client.retrieve_non_fungible_token("tDGQpGy627J6uAw4grYq", retrieve_options.into())?;
+    ///
+    ///     if let Some(nf_token) = result.non_fungible_token {
+    ///         if is_init_call {
+    ///             // Initial call. Get the token data
+    ///             nf_token_data.asset_id = nf_token.asset_id;
+    ///             nf_token_data.metadata = nf_token.metadata;
+    ///
+    ///             if let Some(nft_contents) = nf_token.contents {
+    ///                 nf_token_contents.push(nft_contents.data);
+    ///             }
+    ///         } else if let Some(nft_contents) = nf_token.contents {
+    ///             // Add next contents part to token data
+    ///             nf_token_contents.push(nft_contents.data);
+    ///         }
+    ///     }
+    ///
+    ///     if result.continuation_token.is_some() {
+    ///         // Whole contents data not yet retrieved. Prepare to get next part
+    ///         retrieve_options = RetrieveNonFungibleTokenOptions {
+    ///             retrieve_contents: None,
+    ///             contents_only: None,
+    ///             contents_encoding: None,
+    ///             data_chunk_size: None,
+    ///             async_: None,
+    ///             continuation_token: result.continuation_token,
+    ///         };
+    ///     } else {
+    ///         break;
+    ///     }
+    /// }
+    ///
+    /// if nf_token_contents.len() > 0 {
+    ///     nf_token_data.contents = Some(nf_token_contents);
+    /// }
+    ///
+    /// println!("Non-fungible token data: {:?}", nf_token_data);
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn retrieve_non_fungible_token(&mut self, token_id: &str, options: Option<RetrieveNonFungibleTokenOptions>) -> Result<RetrieveNonFungibleTokenResult> {
+        // Prepare query parameters
+        let mut params_vec = Vec::new();
+        let retrieve_contents;
+        let contents_only;
+        let contents_encoding;
+        let data_chunk_size;
+        let async_;
+        let continuation_token;
+        let mut query_params = None;
+
+        if let Some(opt) = options {
+            if let Some(val) = opt.retrieve_contents {
+                retrieve_contents = val.to_string();
+
+                params_vec.push(("retrieveContents", retrieve_contents.as_str()))
+            }
+
+            if let Some(val) = opt.contents_only {
+                contents_only = val.to_string();
+
+                params_vec.push(("contentsOnly", contents_only.as_str()))
+            }
+
+            if let Some(val) = opt.contents_encoding {
+                contents_encoding = val.to_string();
+
+                params_vec.push(("contentsEncoding", contents_encoding.as_str()));
+            }
+
+            if let Some(val) = opt.data_chunk_size {
+                data_chunk_size = val.to_string();
+
+                params_vec.push(("dataChunkSize", data_chunk_size.as_str()));
+            }
+
+            if let Some(val) = opt.async_ {
+                async_ = val.to_string();
+
+                params_vec.push(("async", async_.as_str()));
+            }
+
+            if let Some(val) = opt.continuation_token {
+                continuation_token = val.to_string();
+
+                params_vec.push(("continuationToken", continuation_token.as_str()));
+            }
+        }
+
+        if params_vec.len() > 0 {
+            query_params = Some(params_vec.as_slice());
+        }
+
+        let req = self.get_request(
+            "assets/non-fungible/tokens/:token_id",
+            Some(&[
+                ("token_id", token_id),
+            ]),
+            query_params,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveNonFungibleTokenResponse>(res)?.data)
+    }
+
+    /// Call *Retrieve Non-Fungible Token Retrieval Progress* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # fn main() -> Result<()> {
+    /// # let mut ctn_client = CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_non_fungible_token_retrieval_progress(
+    ///     "tDGQpGy627J6uAw4grYq",
+    ///     "rGEcL2HhoarCupvbkrv9",
+    /// )?;
+    ///
+    /// println!("Bytes already retrieved: {}", result.progress.bytes_retrieved.to_string());
+    ///
+    /// if result.progress.done {
+    ///     if let Some(true) = result.progress.success {
+    ///         // Finish retrieving the non-fungible token data
+    ///         let result2 = ctn_client.retrieve_non_fungible_token(
+    ///             "tDGQpGy627J6uAw4grYq",
+    ///             Some(RetrieveNonFungibleTokenOptions {
+    ///                 retrieve_contents: None,
+    ///                 contents_only: None,
+    ///                 contents_encoding: None,
+    ///                 data_chunk_size: None,
+    ///                 async_: None,
+    ///                 continuation_token: result.continuation_token,
+    ///             }),
+    ///         )?;
+    ///
+    ///         // Display result
+    ///         println!("Non-fungible token data: {:?}", result2);
+    ///     } else {
+    ///         // Process error
+    ///         let error = result.progress.error.unwrap();
+    ///
+    ///         println!("Asynchronous processing error: [{}] - {}", error.code, error.message);
+    ///     }
+    /// } else {
+    ///     // Asynchronous processing not done yet. Continue pooling
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn retrieve_non_fungible_token_retrieval_progress(&mut self, token_id: &str, retrieval_id: &str) -> Result<RetrieveNFTokenRetrievalProgressResult> {
+        let req = self.get_request(
+            "assets/non-fungible/tokens/:token_id/retrieval/:retrieval_id",
+            Some(&[
+                ("token_id", token_id),
+                ("retrieval_id", retrieval_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveNFTokenRetrievalProgressResponse>(res)?.data)
+    }
+
+    /// Call *Transfer Non-Fungible Token* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # fn main() -> Result<()> {
+    /// # let mut ctn_client = CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.transfer_non_fungible_token(
+    ///     "tDGQpGy627J6uAw4grYq",
+    ///     DeviceId {
+    ///         id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+    ///         is_prod_unique_id: None,
+    ///     },
+    ///     None,
+    /// )?;
+    ///
+    /// println!("Non-fungible token successfully transferred");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn transfer_non_fungible_token(&mut self, token_id: &str, receiving_device: DeviceId, async_: Option<bool>) -> Result<TransferNonFungibleTokenResult> {
+        let body = TransferNonFungibleTokenRequest {
+            receiving_device,
+            async_,
+        };
+        let body_json = serde_json::to_string(&body)?;
+        let req = self.post_request(
+            "assets/non-fungible/tokens/:token_id/transfer",
+            body_json,
+            Some(&[
+                ("token_id", token_id)
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<TransferNonFungibleTokenResponse>(res)?.data)
+    }
+
+    /// Call *Retrieve Non-Fungible Token Transfer Progress* API method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use catenis_api_client::{
+    /// #     CatenisClient, ClientOptions, Environment, Result,
+    ///     api::*,
+    /// };
+    ///
+    /// # fn main() -> Result<()> {
+    /// # let mut ctn_client = CatenisClient::new_with_options(
+    /// #     Some((
+    /// #         "drc3XdxNtzoucpw9xiRp",
+    /// #         concat!(
+    /// #             "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0",
+    /// #             "d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3"
+    /// #         ),
+    /// #     ).into()),
+    /// #     &[
+    /// #         ClientOptions::Environment(Environment::Sandbox),
+    /// #     ],
+    /// # )?;
+    /// #
+    /// let result = ctn_client.retrieve_non_fungible_token_transfer_progress(
+    ///     "tDGQpGy627J6uAw4grYq",
+    ///     "xuYnPMKQSBXi28wRaZpN",
+    /// )?;
+    ///
+    /// println!("Current data manipulation: {:?}", result.progress.data_manipulation);
+    ///
+    /// if result.progress.done {
+    ///     if let Some(true) = result.progress.success {
+    ///         // Display result
+    ///         println!("Non-fungible token successfully transferred");
+    ///     } else {
+    ///         // Process error
+    ///         let error = result.progress.error.unwrap();
+    ///
+    ///         println!("Asynchronous processing error: [{}] - {}", error.code, error.message);
+    ///     }
+    /// } else {
+    ///     // Asynchronous processing not done yet. Continue pooling
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn retrieve_non_fungible_token_transfer_progress(&mut self, token_id: &str, transfer_id: &str) -> Result<RetrieveNFTokenTransferProgressResult> {
+        let req = self.get_request(
+            "assets/non-fungible/tokens/:token_id/transfer/:transfer_id",
+            Some(&[
+                ("token_id", token_id),
+                ("transfer_id", transfer_id),
+            ]),
+            None::<KVList>,
+        )?;
+
+        let res = self.sign_and_send_request(req)?;
+
+        Ok(Self::parse_response::<RetrieveNFTokenTransferProgressResponse>(res)?.data)
     }
 
     // Definition of private methods
@@ -4641,6 +5289,7 @@ mod tests {
     "assetId": "aBy2ovnucyWaSB6Tro9x",
     "name": "RCT-001",
     "description": "Test asset #1",
+    "isNonFungible": false,
     "canReissue": true,
     "decimalPlaces": 2,
     "issuer": {
@@ -4694,6 +5343,7 @@ mod tests {
             asset_id: String::from("aBy2ovnucyWaSB6Tro9x"),
             name: String::from("RCT-001"),
             description: String::from("Test asset #1"),
+            is_non_fungible: false,
             can_reissue: true,
             decimal_places: 2,
             issuer: DeviceInfo {
@@ -4967,12 +5617,17 @@ mod tests {
         "date": "2020-12-23T10:51:45.935Z"
       },
       {
-        "amount": 112.5,
-        "holdingDevice": {
-          "deviceId": "d8YpQ7jgPBJEkBrnvp58",
-          "name": "TstDev2"
-        },
-        "date": "2020-12-23T11:17:23.731Z"
+        "nfTokenIds": [
+          "tQyJrga3ke65RR23iyr2",
+          "tf2rbknDoo9wPsKBkskj"
+        ],
+        "holdingDevices": [
+          {
+            "deviceId": "d8YpQ7jgPBJEkBrnvp58",
+            "name": "TstDev2"
+          }
+        ],
+        "date":"2020-12-24T13:27:02.010Z"
       }
     ],
     "hasMore": false
@@ -5023,7 +5678,7 @@ mod tests {
 
         assert_eq!(result, RetrieveAssetIssuanceHistoryResult {
             issuance_events: vec![
-                AssetIssuanceEventEntry {
+                AssetIssuanceEventEntry::Regular(RegularAssetIssuanceEventEntry {
                     amount: 1500.0,
                     holding_device: DeviceInfo {
                         device_id: String::from("drc3XdxNtzoucpw9xiRp"),
@@ -5031,16 +5686,21 @@ mod tests {
                         prod_unique_id: Some(String::from("ABC123")),
                     },
                     date: "2020-12-23T10:51:45.935Z".into(),
-                },
-                AssetIssuanceEventEntry {
-                    amount: 112.5,
-                    holding_device: DeviceInfo {
-                        device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
-                        name: Some(String::from("TstDev2")),
-                        prod_unique_id: None,
-                    },
-                    date: "2020-12-23T11:17:23.731Z".into(),
-                },
+                }),
+                AssetIssuanceEventEntry::NonFungible(NonFungibleAssetIssuanceEventEntry {
+                    nf_token_ids: vec![
+                        String::from("tQyJrga3ke65RR23iyr2"),
+                        String::from("tf2rbknDoo9wPsKBkskj"),
+                    ],
+                    holding_devices: vec![
+                        DeviceInfo {
+                            device_id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                            name: Some(String::from("TstDev2")),
+                            prod_unique_id: None,
+                        },
+                    ],
+                    date: "2020-12-24T13:27:02.010Z".into(),
+                }),
             ],
             has_more: false,
         });
@@ -7071,5 +7731,799 @@ mod tests {
         let compressed_body = CatenisClient::compress_body(body).unwrap();
 
         assert_eq!(compressed_body.as_slice(), b"\x78\x9c\x0b\xc9\xc8\x2c\x56\x00\xa2\xfc\xbc\x9c\x4a\x85\x44\x85\x92\xd4\xe2\x12\x00\x43\x81\x06\xd8");
+    }
+
+    mod nf_assets_tests {
+        use super::*;
+
+        #[test]
+        fn it_issue_non_fungible_asset() {
+            // Simulate successful 'Issue Non-Fungible Asset' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "assetId": "ahfTzqgWAXnMR6Z57mcp",
+    "nfTokenIds": [
+      "tSWtJurhbkSJLGjjbN4R",
+      "t76Yzrbqcjbtehk6Wecf"
+    ]
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("POST")),
+                path: Some(format!("/api/{}/assets/non-fungible/issue", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                        String::from("content-type"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                        Some(HttpHeader {
+                            field: String::from("content-type"),
+                            value: String::from("application/json; charset=utf-8"),
+                        }),
+                    ].into_iter()).collect()
+                ),
+                body: Some(String::from(r#"{"assetInfo":{"name":"NFA 1","description":"Non-fungible asset #1 for testing","canReissue":true},"nonFungibleTokens":[{"metadata":{"name":"NFA1 NFT 1","description":"First token of non-fungible asset #1"},"contents":{"data":"Contents of first token of non-fungible asset #1","encoding":"utf8"}},{"metadata":{"name":"NFA1 NFT 2","description":"Second token of non-fungible asset #1"},"contents":{"data":"Contents of second token of non-fungible asset #1","encoding":"utf8"}}],"isFinal":true}"#)),
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.issue_non_fungible_asset(
+                NFAssetIssuanceInfoOrContToken::IssuanceInfo(NonFungibleAssetIssuanceInfo {
+                    asset_info: Some(NewNonFungibleAssetInfo {
+                        name: String::from("NFA 1"),
+                        description: Some(String::from("Non-fungible asset #1 for testing")),
+                        can_reissue: true
+                    }),
+                    encrypt_nft_contents: None,
+                    holding_devices: None,
+                    async_: None,
+                }),
+                Some(vec![
+                    NewNonFungibleTokenInfo {
+                        metadata: Some(NewNonFungibleTokenMetadata {
+                            name: String::from("NFA1 NFT 1"),
+                            description: Some(String::from("First token of non-fungible asset #1")),
+                            custom: None,
+                        }),
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("Contents of first token of non-fungible asset #1"),
+                            encoding: Encoding::UTF8
+                        }),
+                    },
+                    NewNonFungibleTokenInfo {
+                        metadata: Some(NewNonFungibleTokenMetadata {
+                            name: String::from("NFA1 NFT 2"),
+                            description: Some(String::from("Second token of non-fungible asset #1")),
+                            custom: None,
+                        }),
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("Contents of second token of non-fungible asset #1"),
+                            encoding: Encoding::UTF8
+                        }),
+                    },
+                ]),
+                Some(true)
+            ).unwrap();
+
+            assert_eq!(result, IssueNonFungibleAssetResult {
+                continuation_token: None,
+                asset_issuance_id: None,
+                asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                nf_token_ids: Some(vec![
+                    String::from("tSWtJurhbkSJLGjjbN4R"),
+                    String::from("t76Yzrbqcjbtehk6Wecf"),
+                ]),
+            });
+        }
+
+        #[test]
+        fn it_reissue_non_fungible_asset() {
+            // Simulate successful 'Reissue Non-Fungible Asset' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "nfTokenIds": [
+      "tDGQpGy627J6uAw4grYq",
+      "tpekkQwM8XA9Dt6q5XLk"
+    ]
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("POST")),
+                path: Some(format!("/api/{}/assets/non-fungible/aaHranrLDaNzcKjdbYnb/issue", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                        String::from("content-type"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                        Some(HttpHeader {
+                            field: String::from("content-type"),
+                            value: String::from("application/json; charset=utf-8"),
+                        }),
+                    ].into_iter()).collect()
+                ),
+                body: Some(String::from(r#"{"nonFungibleTokens":[{"metadata":{"name":"TestNFToken_2","description":"Second non-fungible token issued for test"},"contents":{"data":"This is the contents of non-fungible token #2","encoding":"utf8"}}],"isFinal":true}"#)),
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.reissue_non_fungible_asset(
+                "aaHranrLDaNzcKjdbYnb",
+                NFAssetReissuanceInfoOrContToken::ReissuanceInfo(NonFungibleAssetReissuanceInfo {
+                    encrypt_nft_contents: None,
+                    holding_devices: None,
+                    async_: None,
+                }),
+                Some(vec![
+                    NewNonFungibleTokenInfo {
+                        metadata: Some(NewNonFungibleTokenMetadata {
+                            name: String::from("TestNFToken_2"),
+                            description: Some(String::from("Second non-fungible token issued for test")),
+                            custom: None,
+                        }),
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("This is the contents of non-fungible token #2"),
+                            encoding: Encoding::UTF8
+                        }),
+                    },
+                ]),
+                Some(true)
+            ).unwrap();
+
+            assert_eq!(result, ReissueNonFungibleAssetResult {
+                continuation_token: None,
+                asset_issuance_id: None,
+                nf_token_ids: Some(vec![
+                    String::from("tDGQpGy627J6uAw4grYq"),
+                    String::from("tpekkQwM8XA9Dt6q5XLk"),
+                ]),
+            });
+        }
+
+        #[test]
+        fn it_retrieve_nf_asset_issuance_progress() {
+            // Simulate successful 'Retrieve Non-Fungible Asset Issuance Progress' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "progress": {
+      "percentProcessed": 100,
+      "done": true,
+      "success": true,
+      "finishDate": "2022-11-01T16:55:21.000"
+    },
+    "result": {
+      "assetId": "ahfTzqgWAXnMR6Z57mcp",
+      "nfTokenIds": [
+        "tSWtJurhbkSJLGjjbN4R",
+        "t76Yzrbqcjbtehk6Wecf"
+      ]
+    }
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("GET")),
+                path: Some(format!("/api/{}/assets/non-fungible/issuance/iNQfcL3jCJm4yYZQN9pk", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                    ].into_iter()).collect()
+                ),
+                body: None,
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.retrieve_non_fungible_asset_issuance_progress(
+                "iNQfcL3jCJm4yYZQN9pk",
+            ).unwrap();
+
+            assert_eq!(result, RetrieveNFAssetIssuanceProgressResult {
+                asset_id: None,
+                progress: NFAssetIssuanceProcessProgress {
+                    percent_processed: 100,
+                    done: true,
+                    success: Some(true),
+                    error: None,
+                    finish_date: Some("2022-11-01T16:55:21.000".into()),
+                },
+                result: Some(NFAssetIssuanceResult {
+                    asset_id: Some(String::from("ahfTzqgWAXnMR6Z57mcp")),
+                    nf_token_ids: vec![
+                        String::from("tSWtJurhbkSJLGjjbN4R"),
+                        String::from("t76Yzrbqcjbtehk6Wecf"),
+                    ]
+                }),
+            });
+        }
+
+        #[test]
+        fn it_retrieve_nf_asset_issuance_progress_reissuance() {
+            // Simulate successful 'Retrieve Non-Fungible Asset Issuance Progress' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "assetId": "aaHranrLDaNzcKjdbYnb",
+    "progress": {
+      "percentProcessed": 100,
+      "done": true,
+      "success": true,
+      "finishDate": "2022-11-01T16:57:46.123"
+    },
+    "result": {
+      "nfTokenIds": [
+        "tDGQpGy627J6uAw4grYq",
+        "tpekkQwM8XA9Dt6q5XLk"
+      ]
+    }
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("GET")),
+                path: Some(format!("/api/{}/assets/non-fungible/issuance/iWWKqTx6svmErabyCZKM", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                    ].into_iter()).collect()
+                ),
+                body: None,
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.retrieve_non_fungible_asset_issuance_progress(
+                "iWWKqTx6svmErabyCZKM",
+            ).unwrap();
+
+            assert_eq!(result, RetrieveNFAssetIssuanceProgressResult {
+                asset_id: Some(String::from("aaHranrLDaNzcKjdbYnb")),
+                progress: NFAssetIssuanceProcessProgress {
+                    percent_processed: 100,
+                    done: true,
+                    success: Some(true),
+                    error: None,
+                    finish_date: Some("2022-11-01T16:57:46.123".into()),
+                },
+                result: Some(NFAssetIssuanceResult {
+                    asset_id: None,
+                    nf_token_ids: vec![
+                        String::from("tDGQpGy627J6uAw4grYq"),
+                        String::from("tpekkQwM8XA9Dt6q5XLk"),
+                    ]
+                }),
+            });
+        }
+
+        #[test]
+        fn it_retrieve_non_fungible_token_no_opts() {
+            // Simulate successful 'Retrieve Non-Fungible Token' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "nonFungibleToken": {
+      "assetId": "a5sCytXhvRCCGZ7PhQ6o",
+      "metadata": {
+        "name": "TestNFToken_1",
+        "description": "First non-fungible token issued for test",
+        "contentsEncrypted": true,
+        "contentsURL": "https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq",
+        "custom": {
+          "sensitiveProps": {
+            "senseProp1": "XYZ",
+            "senseProp2": "456"
+          },
+          "propNum": 5,
+          "propStr": "ABC",
+          "propBool": true
+        }
+      },
+      "contents": {
+        "data": "This is the contents of non-fungible token #1"
+      }
+    }
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("GET")),
+                path: Some(format!("/api/{}/assets/non-fungible/tokens/tQyJrga3ke65RR23iyr2", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                    ].into_iter()).collect()
+                ),
+                body: None,
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.retrieve_non_fungible_token(
+                "tQyJrga3ke65RR23iyr2",
+                None,
+            ).unwrap();
+
+            assert_eq!(result, RetrieveNonFungibleTokenResult {
+                continuation_token: None,
+                token_retrieval_id: None,
+                non_fungible_token: Some(NonFungibleTokenInfo {
+                    asset_id: Some(String::from("a5sCytXhvRCCGZ7PhQ6o")),
+                    metadata: Some(NonFungibleTokenMetadata {
+                        name: String::from("TestNFToken_1"),
+                        description: Some(String::from("First non-fungible token issued for test")),
+                        contents_encrypted: true,
+                        contents_url: String::from("https://localhost:8080/ipfs/QmeJKgZ638x2pfFVVaZAB9XjgLCSHh3e6qjMSCmSXKcuUq"),
+                        custom: json_obj!({
+                            "sensitiveProps": {
+                                "senseProp1": "XYZ",
+                                "senseProp2": "456"
+                            },
+                            "propNum": 5,
+                            "propStr": "ABC",
+                            "propBool": true
+                        }),
+                    }),
+                    contents: Some(NonFungibleTokenContents {
+                        data: String::from("This is the contents of non-fungible token #1"),
+                    }),
+                }),
+            });
+        }
+
+        #[test]
+        fn it_retrieve_non_fungible_token_all_opts_async() {
+            // Simulate successful 'Retrieve Non-Fungible Token' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "tokenRetrievalId": "rGEcL2HhoarCupvbkrv9"
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("GET")),
+                path: Some(format!("/api/{}/assets/non-fungible/tokens/tQyJrga3ke65RR23iyr2?retrieveContents=true&contentsOnly=false&contentsEncoding=utf8&dataChunkSize=1024&async=true", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                    ].into_iter()).collect()
+                ),
+                body: None,
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.retrieve_non_fungible_token(
+                "tQyJrga3ke65RR23iyr2",
+                Some(RetrieveNonFungibleTokenOptions {
+                    retrieve_contents: Some(true),
+                    contents_only: Some(false),
+                    contents_encoding: Some(Encoding::UTF8),
+                    data_chunk_size: Some(1024),
+                    async_: Some(true),
+                    continuation_token: None
+                }),
+            ).unwrap();
+
+            assert_eq!(result, RetrieveNonFungibleTokenResult {
+                continuation_token: None,
+                token_retrieval_id: Some(String::from("rGEcL2HhoarCupvbkrv9")),
+                non_fungible_token: None,
+            });
+        }
+
+        #[test]
+        fn it_retrieve_nf_token_retrieval_progress() {
+            // Simulate successful 'Retrieve Non-Fungible Token Retrieval Progress' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "progress": {
+      "bytesRetrieved": 1024,
+      "done": true,
+      "success": true,
+      "finishDate": "2022-11-05T12:06:32.405"
+    },
+    "continuationToken": "eLNuL4M46n3BD57GNEuy"
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("GET")),
+                path: Some(format!("/api/{}/assets/non-fungible/tokens/tDGQpGy627J6uAw4grYq/retrieval/rGEcL2HhoarCupvbkrv9", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                    ].into_iter()).collect()
+                ),
+                body: None,
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.retrieve_non_fungible_token_retrieval_progress(
+                "tDGQpGy627J6uAw4grYq",
+                "rGEcL2HhoarCupvbkrv9",
+            ).unwrap();
+
+            assert_eq!(result, RetrieveNFTokenRetrievalProgressResult {
+                progress: NFTokenRetrievalProcessProgress {
+                    bytes_retrieved: 1024,
+                    done: true,
+                    success: Some(true),
+                    error: None,
+                    finish_date: Some("2022-11-05T12:06:32.405".into()),
+                },
+                continuation_token: Some(String::from("eLNuL4M46n3BD57GNEuy")),
+            });
+        }
+
+        #[test]
+        fn it_transfer_non_fungible_token() {
+            // Simulate successful 'Transfer Non-Fungible Token' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "success": true
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("POST")),
+                path: Some(format!("/api/{}/assets/non-fungible/tokens/tDGQpGy627J6uAw4grYq/transfer", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                        String::from("content-type"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                        Some(HttpHeader {
+                            field: String::from("content-type"),
+                            value: String::from("application/json; charset=utf-8"),
+                        }),
+                    ].into_iter()).collect()
+                ),
+                body: Some(String::from(r#"{"receivingDevice":{"id":"d8YpQ7jgPBJEkBrnvp58"}}"#)),
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.transfer_non_fungible_token(
+                "tDGQpGy627J6uAw4grYq",
+                DeviceId {
+                    id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                    is_prod_unique_id: None,
+                },
+                None,
+            ).unwrap();
+
+            assert_eq!(result, TransferNonFungibleTokenResult {
+                token_transfer_id: None,
+                success: Some(true),
+            });
+        }
+
+        #[test]
+        fn it_transfer_non_fungible_token_async() {
+            // Simulate successful 'Transfer Non-Fungible Token' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "tokenTransferId": "xuYnPMKQSBXi28wRaZpN"
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("POST")),
+                path: Some(format!("/api/{}/assets/non-fungible/tokens/tDGQpGy627J6uAw4grYq/transfer", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                        String::from("content-type"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                        Some(HttpHeader {
+                            field: String::from("content-type"),
+                            value: String::from("application/json; charset=utf-8"),
+                        }),
+                    ].into_iter()).collect()
+                ),
+                body: Some(String::from(r#"{"receivingDevice":{"id":"d8YpQ7jgPBJEkBrnvp58"},"async":true}"#)),
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.transfer_non_fungible_token(
+                "tDGQpGy627J6uAw4grYq",
+                DeviceId {
+                    id: String::from("d8YpQ7jgPBJEkBrnvp58"),
+                    is_prod_unique_id: None,
+                },
+                Some(true),
+            ).unwrap();
+
+            assert_eq!(result, TransferNonFungibleTokenResult {
+                token_transfer_id: Some(String::from("xuYnPMKQSBXi28wRaZpN")),
+                success: None,
+            });
+        }
+
+        #[test]
+        fn it_retrieve_nf_token_transfer_progress() {
+            // Simulate successful 'Retrieve Non-Fungible Token Transfer Progress' API method response
+
+            // Start HTTP server in success simulation node
+            let res_body = r#"{
+  "status": "success",
+  "data": {
+    "progress": {
+      "dataManipulation": {
+        "bytesRead": 1234,
+        "bytesWritten": 1024
+      },
+      "done": true,
+      "success": true,
+      "finishDate": "2022-11-07T13:09:57.384Z"
+    }
+  }
+}"#;
+            let http_server = HttpServer::new(
+                HttpServerMode::Success(
+                    HttpBody::from_json(res_body).unwrap(),
+                ),
+                "localhost"
+            ).with_expected_request(PartialHttpRequest {
+                method: Some(String::from("GET")),
+                path: Some(format!("/api/{}/assets/non-fungible/tokens/tDGQpGy627J6uAw4grYq/transfer/xuYnPMKQSBXi28wRaZpN", DEFAULT_API_VERSION.to_string())),
+                headers: Some(
+                    vec![
+                        String::from("x-bcot-timestamp"),
+                        String::from("authorization"),
+                    ].into_iter().zip(vec![
+                        None,
+                        None,
+                    ].into_iter()).collect()
+                ),
+                body: None,
+            });
+            http_server.start();
+
+            let server_port = http_server.get_port();
+
+            // Instantiate Catenis API client
+            let mut ctn_client = CatenisClient::new_with_options(
+                Some((
+                    "drc3XdxNtzoucpw9xiRp",
+                    "4c1749c8e86f65e0a73e5fb19f2aa9e74a716bc22d7956bf3072b4bc3fbfe2a0d138ad0d4bcfee251e4e5f54d6e92b8fd4eb36958a7aeaeeb51e8d2fcc4552c3",
+                ).into()),
+                &[
+                    ClientOptions::Host(&format!("localhost:{}", server_port)),
+                    ClientOptions::Secure(false),
+                ],
+            ).unwrap();
+
+            let result = ctn_client.retrieve_non_fungible_token_transfer_progress(
+                "tDGQpGy627J6uAw4grYq",
+                "xuYnPMKQSBXi28wRaZpN",
+            ).unwrap();
+
+            assert_eq!(result, RetrieveNFTokenTransferProgressResult {
+                progress: NFTokenTransferProcessProgress {
+                    data_manipulation: NFTokenDataManipulationProgress {
+                        bytes_read: 1234,
+                        bytes_written: Some(1024),
+                    },
+                    done: true,
+                    success: Some(true),
+                    error: None,
+                    finish_date: Some("2022-11-07T13:09:57.384Z".into()),
+                },
+            });
+        }
     }
 }
