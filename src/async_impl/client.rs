@@ -18,7 +18,7 @@ use reqwest::{
 };
 use async_compression::{
     Level,
-    tokio_02::bufread::ZlibEncoder,
+    tokio::bufread::ZlibEncoder,
 };
 use tokio::io::AsyncReadExt;
 use time::{

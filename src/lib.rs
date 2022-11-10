@@ -46,10 +46,8 @@
 //!
 //! ## Asynchronous processing
 //!
-//! The library allows for asynchronous processing using the [Tokio](https://crates.io/crates/tokio/0.2.24)
+//! The library allows for asynchronous processing using the [Tokio](https://crates.io/crates/tokio)
 //! runtime.
-//!
-//! > **Note**: only Tokio version 0.2 is currently supported.
 //!
 //! To activate asynchronous processing, the **`async`** feature must be enabled.
 //!

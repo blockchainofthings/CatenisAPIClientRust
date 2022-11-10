@@ -198,7 +198,7 @@ impl WsNotifyChannel {
 
         Ok(tokio::spawn(async move {
             // Create notification event handler async task
-            let (mut h_tx, mut h_rx) = mpsc::channel(1024);
+            let (h_tx, mut h_rx) = mpsc::channel(1024);
 
             tokio::spawn(async move {
                 loop {
@@ -352,7 +352,7 @@ impl WsNotifyChannel {
                                                     }
                                                 }
                                             },
-                                            Message::Ping(_) | Message::Pong(_) => (),
+                                            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => (),
                                             Message::Close(close_info) => {
                                                 // WebSocket connection is being closed. Send close message
                                                 //  to notification event handler async task...
@@ -450,7 +450,7 @@ impl WsNotifyChannel {
                     },
                     Err(err) => {
                         match err {
-                            TryRecvError::Closed => {
+                            TryRecvError::Disconnected => {
                                 // Lost communication with main thread. Exit current async task
                                 //  (requesting child async task to exit too)
                                 h_tx.send(NotifyEventHandlerMessage::Drop).await.unwrap_or(());
@@ -544,7 +544,7 @@ mod tests {
         let mut notify_channel_3 = (&*notify_channel.clone().lock().unwrap()).clone();
 
         tokio::spawn(async move {
-            tokio::time::delay_for(std::time::Duration::from_secs(30)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
             notify_channel_3.close().await;
         });

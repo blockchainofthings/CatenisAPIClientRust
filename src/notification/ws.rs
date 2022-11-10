@@ -21,7 +21,10 @@ use tungstenite::{
         frame::coding::CloseCode,
     },
     client::{
-        IntoClientRequest, AutoStream,
+        IntoClientRequest,
+    },
+    stream::{
+        MaybeTlsStream,
     },
 };
 use serde::{
@@ -216,8 +219,9 @@ impl WsNotifyChannel {
 
         // Set read timeout for WebSocket connection
         match ws.get_ref() {
-            AutoStream::Plain(stream) =>  stream,
-            AutoStream::Tls(tls_stream) => tls_stream.get_ref(),
+            MaybeTlsStream::Plain(stream) =>  stream,
+            MaybeTlsStream::NativeTls(tls_stream) => tls_stream.get_ref(),
+            &_ => panic!("Unexpected TLS stream type"),
         }.set_read_timeout(Some(std::time::Duration::from_millis(500)))
             .map_err(|err| Error::new_client_error(
                 Some("Failed to set read timeout for WebSocket connection"),
@@ -382,7 +386,7 @@ impl WsNotifyChannel {
                                     }
                                 }
                             },
-                            Message::Ping(_) | Message::Pong(_) => (),
+                            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => (),
                             Message::Close(close_info) => {
                                 // WebSocket connection is being closed. Send close message
                                 //  to notification event handler thread...
