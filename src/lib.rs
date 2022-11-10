@@ -52,7 +52,7 @@
 //! To activate asynchronous processing, the **`async`** feature must be enabled.
 //!
 //! ```toml
-//! catenis_api_client = { version = "2.0", features = ["async"] }
+//! catenis_api_client = { version = "3.0", features = ["async"] }
 //! ```
 //!
 //! The asynchronous version of the client can then be accessed from the [`async_impl`] module.
