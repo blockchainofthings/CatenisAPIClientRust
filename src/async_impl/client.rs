@@ -2703,7 +2703,7 @@ impl CatenisClient {
     ///         async_: None,
     ///     }),
     ///     Some(vec![
-    ///         NewNonFungibleTokenInfo {
+    ///         Some(NewNonFungibleTokenInfo {
     ///             metadata: Some(NewNonFungibleTokenMetadata {
     ///                 name: String::from("NFA1 NFT 1"),
     ///                 description: Some(String::from("First token of non-fungible asset #1")),
@@ -2713,8 +2713,8 @@ impl CatenisClient {
     ///                 data: String::from("Contents of first token of Catenis non-fungible asset #1"),
     ///                 encoding: Encoding::UTF8
     ///             }),
-    ///         },
-    ///         NewNonFungibleTokenInfo {
+    ///         }),
+    ///         Some(NewNonFungibleTokenInfo {
     ///             metadata: Some(NewNonFungibleTokenMetadata {
     ///                 name: String::from("NFA1 NFT 2"),
     ///                 description: Some(String::from("Second token of non-fungible asset #1")),
@@ -2724,7 +2724,7 @@ impl CatenisClient {
     ///                 data: String::from("Contents of second token of Catenis non-fungible asset #1"),
     ///                 encoding: Encoding::UTF8
     ///             }),
-    ///         },
+    ///         }),
     ///     ]),
     ///     Some(true)
     /// ).await?;
@@ -2737,7 +2737,7 @@ impl CatenisClient {
     pub async fn issue_non_fungible_asset(
         &mut self,
         issuance_info_or_cont_token: NFAssetIssuanceInfoOrContToken,
-        non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+        non_fungible_tokens: Option<Vec<Option<NewNonFungibleTokenInfo>>>,
         is_final: Option<bool>
     ) -> Result<IssueNonFungibleAssetResult> {
         let body = match issuance_info_or_cont_token {
@@ -2811,7 +2811,7 @@ impl CatenisClient {
     ///         async_: None,
     ///     }),
     ///     Some(vec![
-    ///         NewNonFungibleTokenInfo {
+    ///         Some(NewNonFungibleTokenInfo {
     ///             metadata: Some(NewNonFungibleTokenMetadata {
     ///                 name: String::from("NFA1 NFT 3"),
     ///                 description: Some(String::from("Third token of non-fungible asset #1")),
@@ -2821,8 +2821,8 @@ impl CatenisClient {
     ///                 data: String::from("Contents of third token of non-fungible asset #1"),
     ///                 encoding: Encoding::UTF8
     ///             }),
-    ///         },
-    ///         NewNonFungibleTokenInfo {
+    ///         }),
+    ///         Some(NewNonFungibleTokenInfo {
     ///             metadata: Some(NewNonFungibleTokenMetadata {
     ///                 name: String::from("NFA1 NFT 4"),
     ///                 description: Some(String::from("Forth token of non-fungible asset #1")),
@@ -2832,7 +2832,7 @@ impl CatenisClient {
     ///                 data: String::from("Contents of forth token of non-fungible asset #1"),
     ///                 encoding: Encoding::UTF8
     ///             }),
-    ///         },
+    ///         }),
     ///     ]),
     ///     Some(true)
     /// ).await?;
@@ -2845,7 +2845,7 @@ impl CatenisClient {
         &mut self,
         asset_id: &str,
         reissuance_info_or_cont_token: NFAssetReissuanceInfoOrContToken,
-        non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+        non_fungible_tokens: Option<Vec<Option<NewNonFungibleTokenInfo>>>,
         is_final: Option<bool>
     ) -> Result<ReissueNonFungibleAssetResult> {
         let body = match reissuance_info_or_cont_token {
@@ -7865,7 +7865,7 @@ mod tests {
                     async_: None,
                 }),
                 Some(vec![
-                    NewNonFungibleTokenInfo {
+                    Some(NewNonFungibleTokenInfo {
                         metadata: Some(NewNonFungibleTokenMetadata {
                             name: String::from("NFA1 NFT 1"),
                             description: Some(String::from("First token of non-fungible asset #1")),
@@ -7875,8 +7875,8 @@ mod tests {
                             data: String::from("Contents of first token of non-fungible asset #1"),
                             encoding: Encoding::UTF8
                         }),
-                    },
-                    NewNonFungibleTokenInfo {
+                    }),
+                    Some(NewNonFungibleTokenInfo {
                         metadata: Some(NewNonFungibleTokenMetadata {
                             name: String::from("NFA1 NFT 2"),
                             description: Some(String::from("Second token of non-fungible asset #1")),
@@ -7886,7 +7886,7 @@ mod tests {
                             data: String::from("Contents of second token of non-fungible asset #1"),
                             encoding: Encoding::UTF8
                         }),
-                    },
+                    }),
                 ]),
                 Some(true)
             ).await.unwrap();
@@ -7964,7 +7964,7 @@ mod tests {
                     async_: None,
                 }),
                 Some(vec![
-                    NewNonFungibleTokenInfo {
+                    Some(NewNonFungibleTokenInfo {
                         metadata: Some(NewNonFungibleTokenMetadata {
                             name: String::from("TestNFToken_2"),
                             description: Some(String::from("Second non-fungible token issued for test")),
@@ -7974,7 +7974,7 @@ mod tests {
                             data: String::from("This is the contents of non-fungible token #2"),
                             encoding: Encoding::UTF8
                         }),
-                    },
+                    }),
                 ]),
                 Some(true)
             ).await.unwrap();

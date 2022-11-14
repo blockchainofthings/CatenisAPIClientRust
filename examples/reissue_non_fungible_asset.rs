@@ -29,7 +29,7 @@ fn main() -> Result<()> {
             async_: None,
         }),
         Some(vec![
-            NewNonFungibleTokenInfo {
+            Some(NewNonFungibleTokenInfo {
                 metadata: Some(NewNonFungibleTokenMetadata {
                     name: String::from("NFA1 NFT 3"),
                     description: Some(String::from("Third token of non-fungible asset #1")),
@@ -39,8 +39,8 @@ fn main() -> Result<()> {
                     data: String::from("Contents of third token of non-fungible asset #1"),
                     encoding: Encoding::UTF8
                 }),
-            },
-            NewNonFungibleTokenInfo {
+            }),
+            Some(NewNonFungibleTokenInfo {
                 metadata: Some(NewNonFungibleTokenMetadata {
                     name: String::from("NFA1 NFT 4"),
                     description: Some(String::from("Forth token of non-fungible asset #1")),
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
                     data: String::from("Contents of forth token of non-fungible asset #1"),
                     encoding: Encoding::UTF8
                 }),
-            },
+            }),
         ]),
         Some(true)
     )?;

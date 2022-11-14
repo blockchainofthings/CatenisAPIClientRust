@@ -2250,7 +2250,7 @@ pub(crate) struct IssueNonFungibleAssetRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub continuation_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+    pub non_fungible_tokens: Option<Vec<Option<NewNonFungibleTokenInfo>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Default value: **`true`**.
     pub is_final: Option<bool>,
@@ -2272,7 +2272,7 @@ pub(crate) struct ReissueNonFungibleAssetRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub continuation_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub non_fungible_tokens: Option<Vec<NewNonFungibleTokenInfo>>,
+    pub non_fungible_tokens: Option<Vec<Option<NewNonFungibleTokenInfo>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Default value: **`true`**.
     pub is_final: Option<bool>,
@@ -5994,7 +5994,33 @@ mod tests {
         }
 
         #[test]
-        fn it_serialize_issue_non_fungible_asset_request_cont_call() {
+        fn it_serialize_issue_non_fungible_asset_request_cont_call_single_token() {
+            let issue_non_fungible_asset_request = IssueNonFungibleAssetRequest {
+                asset_info: None,
+                encrypt_nft_contents: None,
+                holding_devices: None,
+                async_: None,
+                continuation_token: Some(String::from("bRQDsLZpksdHyMPxFk3J")),
+                non_fungible_tokens: Some(vec![
+                    None,
+                    Some(NewNonFungibleTokenInfo {
+                        metadata: None,
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: String::from("Final part of non-fungible token contents"),
+                            encoding: Encoding::UTF8
+                        })
+                    })
+                ]),
+                is_final: Some(false),
+            };
+
+            let json = serde_json::to_string(&issue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"continuationToken":"bRQDsLZpksdHyMPxFk3J","nonFungibleTokens":[null,{"contents":{"data":"Final part of non-fungible token contents","encoding":"utf8"}}],"isFinal":false}"#);
+        }
+
+        #[test]
+        fn it_serialize_issue_non_fungible_asset_request_cont_call_no_tokens() {
             let issue_non_fungible_asset_request = IssueNonFungibleAssetRequest {
                 asset_info: None,
                 encrypt_nft_contents: None,
@@ -6023,7 +6049,7 @@ mod tests {
                 async_: None,
                 continuation_token: None,
                 non_fungible_tokens: Some(vec![
-                    NewNonFungibleTokenInfo {
+                    Some(NewNonFungibleTokenInfo {
                         metadata: Some(NewNonFungibleTokenMetadata {
                             name: String::from("TestNFToken_1"),
                             description: Some(String::from("First non-fungible token issued for test")),
@@ -6033,7 +6059,7 @@ mod tests {
                             data: String::from("This is the contents of non-fungible token #1"),
                             encoding: Encoding::UTF8,
                         }),
-                    },
+                    }),
                 ]),
                 is_final: None,
             };
@@ -6061,7 +6087,7 @@ mod tests {
                 async_: Some(false),
                 continuation_token: None,
                 non_fungible_tokens: Some(vec![
-                    NewNonFungibleTokenInfo {
+                    Some(NewNonFungibleTokenInfo {
                         metadata: Some(NewNonFungibleTokenMetadata {
                             name: String::from("TestNFToken_1"),
                             description: Some(String::from("First non-fungible token issued for test")),
@@ -6071,7 +6097,7 @@ mod tests {
                             data: String::from("This is the contents of non-fungible token #1"),
                             encoding: Encoding::UTF8,
                         }),
-                    },
+                    }),
                 ]),
                 is_final: Some(true),
             };
@@ -6147,7 +6173,32 @@ mod tests {
         }
 
         #[test]
-        fn it_serialize_reissue_non_fungible_asset_request_cont_call() {
+        fn it_serialize_reissue_non_fungible_asset_request_cont_call_single_token() {
+            let reissue_non_fungible_asset_request = ReissueNonFungibleAssetRequest {
+                encrypt_nft_contents: None,
+                holding_devices: None,
+                async_: None,
+                continuation_token: Some(String::from("bXdG5i8EAPwA5RDdtXb3")),
+                non_fungible_tokens: Some(vec![
+                    None,
+                    Some(NewNonFungibleTokenInfo {
+                        metadata: None,
+                        contents: Some(NewNonFungibleTokenContents {
+                            data: "Final part of non-fungible token contents".to_string(),
+                            encoding: Encoding::UTF8
+                        })
+                    })
+                ]),
+                is_final: Some(false),
+            };
+
+            let json = serde_json::to_string(&reissue_non_fungible_asset_request).unwrap();
+
+            assert_eq!(json, r#"{"continuationToken":"bXdG5i8EAPwA5RDdtXb3","nonFungibleTokens":[null,{"contents":{"data":"Final part of non-fungible token contents","encoding":"utf8"}}],"isFinal":false}"#);
+        }
+
+        #[test]
+        fn it_serialize_reissue_non_fungible_asset_request_cont_call_no_tokens() {
             let reissue_non_fungible_asset_request = ReissueNonFungibleAssetRequest {
                 encrypt_nft_contents: None,
                 holding_devices: None,
@@ -6170,7 +6221,7 @@ mod tests {
                 async_: None,
                 continuation_token: None,
                 non_fungible_tokens: Some(vec![
-                    NewNonFungibleTokenInfo {
+                    Some(NewNonFungibleTokenInfo {
                         metadata: Some(NewNonFungibleTokenMetadata {
                             name: String::from("TestNFToken_2"),
                             description: Some(String::from("Second non-fungible token issued for test")),
@@ -6180,7 +6231,7 @@ mod tests {
                             data: String::from("This is the contents of non-fungible token #2"),
                             encoding: Encoding::UTF8,
                         }),
-                    },
+                    }),
                 ]),
                 is_final: None,
             };
@@ -6203,7 +6254,7 @@ mod tests {
                 async_: Some(false),
                 continuation_token: None,
                 non_fungible_tokens: Some(vec![
-                    NewNonFungibleTokenInfo {
+                    Some(NewNonFungibleTokenInfo {
                         metadata: Some(NewNonFungibleTokenMetadata {
                             name: String::from("TestNFToken_2"),
                             description: Some(String::from("Second non-fungible token issued for test")),
@@ -6213,7 +6264,7 @@ mod tests {
                             data: String::from("This is the contents of non-fungible token #2"),
                             encoding: Encoding::UTF8,
                         }),
-                    },
+                    }),
                 ]),
                 is_final: Some(true),
             };
