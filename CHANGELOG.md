@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.0.1] - 2022-11-14
+
+### Fixes
+- Fix the data structures used for issuing request for the API methods Issue Non-Fungible Asset and Reissue Non-Fungible
+  Asset.
+
 ## [3.0.0] - 2022-11-10
 
 ### Breaking changes
